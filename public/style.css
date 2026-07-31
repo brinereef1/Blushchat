@@ -1587,6 +1587,52 @@ body {
   /* Only applies to the video overlay — everything else stays light/romantic */
 }
 
+/* ════════════════════════════════════════════════════════════════════════════════
+   INCOMING CALL OVERLAY
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+#incoming-call-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.3s ease;
+}
+
+.incoming-call-content {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  text-align: center;
+  max-width: 90%;
+  width: 400px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.incoming-call-content h2 {
+  color: var(--rose-600);
+  margin-bottom: 16px;
+  font-size: 1.5rem;
+}
+
+.incoming-call-content p {
+  color: var(--gray-600);
+  margin-bottom: 24px;
+  font-size: 1.1rem;
+}
+
+.incoming-call-actions {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+}
+
 /* ─── Reduced Motion ───────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *,

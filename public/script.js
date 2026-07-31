@@ -21,6 +21,8 @@ const state = {
   isMuted: false,
   isCameraOff: false,
   callTimerInterval: null,
+  iceDisconnectTimer: null,
+  connectionDisconnectTimer: null,
 
   // File sharing
   pendingFile: null,
@@ -33,6 +35,15 @@ const state = {
 
   // Waiting timer
   waitingTimerInterval: null,
+
+  // Incoming call handling
+  incomingCall: {
+    offer: null,
+    type: null,
+    callId: null,
+    room: null,
+    iceCandidates: []
+  }
 };
 
 const ICE_SERVERS = {
@@ -42,6 +53,10 @@ const ICE_SERVERS = {
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun3.l.google.com:19302' },
     { urls: 'stun:stun4.l.google.com:19302' },
+    // TURN servers require proper formatting: turn:host:port
+    // For now, we'll use STUN-only to avoid configuration issues
+    // In production, replace with valid TURN server credentials
+    // { urls: 'turn:your-turn-server.com:3478', username: 'username', credential: 'credential' }
   ],
 };
 
@@ -131,6 +146,13 @@ const DOM = {
 
   // Toast
   toastContainer: $('#toast-container'),
+
+  // Incoming call overlay (will be created dynamically)
+  incomingCallOverlay: null,
+  incomingCallFrom: null,
+  incomingCallType: null,
+  incomingCallAcceptBtn: null,
+  incomingCallDeclineBtn: null,
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -605,8 +627,21 @@ function connectSocket(profile) {
     cleanupCall();
   });
 
+  state.socket.on('call-rejected', (data) => {
+    showToast('Call was declined');
+    cleanupCall();
+  });
+
   state.socket.on('error-msg', (data) => {
     showToast(data.message);
+    // Registration errors (username taken, invalid age, …) leave the submit
+    // button disabled from onRegister — re-enable it so the user can fix the
+    // form instead of being stuck on "Connecting...".
+    if (!state.isChatting) {
+      DOM.findBtn.disabled = false;
+      const btnText = DOM.findBtn.querySelector('.btn-text');
+      if (btnText) btnText.textContent = 'Find a Connection';
+    }
   });
 
   state.socket.on('start-finding', () => {
@@ -1169,7 +1204,30 @@ async function startCall(isVideo) {
     startCallTimer();
   } catch (err) {
     console.error('❌ startCall error:', err);
-    showToast('Could not access camera/microphone. Check permissions.');
+    console.error('Error name:', err.name);
+    console.error('Error message:', err.message);
+
+    // Check if this is a media permissions error from getUserMedia
+    const isMediaError =
+      err.name === 'NotAllowedError' ||
+      err.name === 'PermissionDeniedError' ||
+      err.name === 'NotFoundError' ||
+      err.name === 'NotReadableError' ||
+      err.name === 'OverconstrainedError' ||
+      (err.message && (
+        err.message.includes('Permission denied') ||
+        err.message.includes('not allowed') ||
+        err.message.includes('Could not start') ||
+        err.message.includes('Sensor') ||
+        err.message.includes('Device') ||
+        err.message.includes('media')
+      ));
+
+    if (isMediaError) {
+      showToast('Could not access camera/microphone. Check permissions.');
+    } else {
+      showToast('Could not connect the call. Please try again.');
+    }
     cleanupCall();
   }
 }
@@ -1177,7 +1235,7 @@ async function startCall(isVideo) {
 async function handleOffer(data) {
   if (state.isCallActive) {
     // Glare: both sides dialed at once. Deterministically pick one caller to
-    // win — the smaller callId keeps its offer; the loser tears down its own
+    // win — the smaller callId keeps its offer; the loser tears down its offer; the loser tears down its own
     // outgoing call and answers the winner's offer. Otherwise both reject each
     // other and no connection is ever established.
     if (state.callId && data.callId && data.callId < state.callId) {
@@ -1187,49 +1245,18 @@ async function handleOffer(data) {
     }
   }
 
-  state.callId = data.callId;
-  state.isVideoCall = data.type === 'video';
-  state.isCaller = false;
+  // Store incoming call details
+  state.incomingCall.offer = data.offer;
+  state.incomingCall.type = data.type;
+  state.incomingCall.callId = data.callId;
+  state.incomingCall.room = data.room;
+  state.incomingCall.iceCandidates = [];
 
-  try {
-    state.localStream = await navigator.mediaDevices.getUserMedia({
-      video: data.type === 'video',
-      audio: true,
-    });
+  // Show incoming call UI
+  showIncomingCallUI();
 
-    if (data.type === 'video') {
-      DOM.localVideo.srcObject = state.localStream;
-    }
-
-    await createPeerConnection();
-
-    await state.peerConnection.setRemoteDescription(
-      new RTCSessionDescription(data.offer)
-    );
-
-    const answer = await state.peerConnection.createAnswer();
-    await state.peerConnection.setLocalDescription(answer);
-
-    state.socket.emit('call-answer', {
-      room: state.currentRoom,
-      answer: answer,
-    });
-
-    state.isCallActive = true;
-
-    if (data.type === 'video') {
-      showVideoCallUI();
-    } else {
-      showVoiceCallUI();
-    }
-
-    startCallTimer();
-    showToast('Incoming call connected!');
-  } catch (err) {
-    console.error('❌ handleOffer error:', err);
-    showToast('Could not connect the call.');
-    cleanupCall();
-  }
+  // Note: We do NOT auto-answer here. User must click Accept or Decline.
+  // ICE candidates will be buffered until the user accepts.
 }
 
 async function handleAnswer(data) {
@@ -1245,6 +1272,12 @@ async function handleAnswer(data) {
 }
 
 async function handleIceCandidate(data) {
+  // If we have an incoming call waiting for user acceptance, buffer the candidate
+  if (state.incomingCall.offer && !state.peerConnection) {
+    state.incomingCall.iceCandidates.push(data.candidate);
+    return;
+  }
+
   if (!state.peerConnection) return;
   try {
     await state.peerConnection.addIceCandidate(
@@ -1258,7 +1291,9 @@ async function handleIceCandidate(data) {
 // ─── Create Peer Connection ──────────────────────────────────────────────
 
 async function createPeerConnection() {
-  state.peerConnection = new RTCPeerConnection(ICE_SERVERS);
+  state.peerConnection = new RTCPeerConnection(ICE_SERVERS, {
+    iceCandidatePoolSize: 3,
+  });
 
   // Add local tracks
   if (state.localStream) {
@@ -1271,6 +1306,7 @@ async function createPeerConnection() {
   state.remoteStream = new MediaStream();
 
   state.peerConnection.ontrack = (event) => {
+    console.log('ontrack event:', event);
     state.remoteStream.addTrack(event.track);
     // Route remote media to the right element: video calls play through
     // #remote-video, voice calls through the hidden #remote-audio element
@@ -1294,20 +1330,64 @@ async function createPeerConnection() {
 
   state.peerConnection.oniceconnectionstatechange = () => {
     const connState = state.peerConnection.iceConnectionState;
+    console.log('iceConnectionState:', connState);
     if (connState === 'disconnected' || connState === 'failed') {
       if (state.isCallActive) {
-        showToast('Call connection lost.');
-        cleanupCall();
+        // Clear any existing timer
+        if (state.iceDisconnectTimer) {
+          clearTimeout(state.iceDisconnectTimer);
+          state.iceDisconnectTimer = null;
+        }
+        // Start a timer to allow for potential recovery
+        state.iceDisconnectTimer = setTimeout(() => {
+          // Re-check state after delay
+          if (state.isCallActive && state.peerConnection) {
+            const currentState = state.peerConnection.iceConnectionState;
+            if (currentState === 'disconnected' || currentState === 'failed') {
+              showToast('Call connection lost.');
+              cleanupCall();
+            }
+          }
+          state.iceDisconnectTimer = null;
+        }, 5000); // 5 second grace period
+      }
+    } else if (connState === 'connected' || connState === 'completed') {
+      // Clear timer if connection recovers
+      if (state.iceDisconnectTimer) {
+        clearTimeout(state.iceDisconnectTimer);
+        state.iceDisconnectTimer = null;
       }
     }
   };
 
   state.peerConnection.onconnectionstatechange = () => {
     const connState = state.peerConnection.connectionState;
+    console.log('connectionState:', connState);
     if (connState === 'disconnected' || connState === 'failed') {
       if (state.isCallActive) {
-        showToast('Call disconnected.');
-        cleanupCall();
+        // Clear any existing timer
+        if (state.connectionDisconnectTimer) {
+          clearTimeout(state.connectionDisconnectTimer);
+          state.connectionDisconnectTimer = null;
+        }
+        // Start a timer to allow for potential recovery
+        state.connectionDisconnectTimer = setTimeout(() => {
+          // Re-check state after delay
+          if (state.isCallActive && state.peerConnection) {
+            const currentState = state.peerConnection.connectionState;
+            if (currentState === 'disconnected' || currentState === 'failed') {
+              showToast('Call disconnected.');
+              cleanupCall();
+            }
+          }
+          state.connectionDisconnectTimer = null;
+        }, 5000); // 5 second grace period
+      }
+    } else if (connState === 'connected' || connState === 'completed') {
+      // Clear timer if connection recovers
+      if (state.connectionDisconnectTimer) {
+        clearTimeout(state.connectionDisconnectTimer);
+        state.connectionDisconnectTimer = null;
       }
     }
   };
@@ -1338,9 +1418,8 @@ function toggleCamera() {
   const videoTrack = state.localStream.getVideoTracks()[0];
   if (!videoTrack) return;
 
-  state.isCameraOff = videoTrack.enabled;
-  videoTrack.enabled = !state.isCameraOff;
-  state.isCameraOff = !state.isCameraOff;
+  videoTrack.enabled = !videoTrack.enabled;
+  state.isCameraOff = !videoTrack.enabled;
 
   DOM.vidCameraBtn.classList.toggle('muted', state.isCameraOff);
 }
@@ -1395,6 +1474,163 @@ function cleanupCall() {
   DOM.voiceMuteBtn.classList.remove('muted');
   DOM.vidMuteBtn.classList.remove('muted');
   DOM.vidCameraBtn.classList.remove('muted');
+}
+
+// ─── Incoming Call UI ────────────────────────────────────────────────────
+function showIncomingCallUI() {
+  // Remove any stale overlay from a previous offer
+  if (DOM.incomingCallOverlay) {
+    DOM.incomingCallOverlay.remove();
+    DOM.incomingCallOverlay = null;
+  }
+
+  const callerName = (state.strangerInfo && state.strangerInfo.username) || 'Stranger';
+
+  const overlay = document.createElement('div');
+  overlay.id = 'incoming-call-overlay';
+
+  const content = document.createElement('div');
+  content.className = 'incoming-call-content';
+
+  const title = document.createElement('h2');
+  title.textContent = `${callerName} is calling…`;
+
+  const subtitle = document.createElement('p');
+  subtitle.textContent = state.incomingCall.type === 'video' ? '📹 Video call' : '🎧 Voice call';
+
+  const actions = document.createElement('div');
+  actions.className = 'incoming-call-actions';
+
+  const declineBtn = document.createElement('button');
+  declineBtn.className = 'btn-secondary';
+  declineBtn.textContent = 'Decline';
+  declineBtn.addEventListener('click', declineIncomingCall);
+
+  const acceptBtn = document.createElement('button');
+  acceptBtn.className = 'btn-primary';
+  acceptBtn.textContent = 'Accept';
+  acceptBtn.addEventListener('click', acceptIncomingCall);
+
+  actions.appendChild(declineBtn);
+  actions.appendChild(acceptBtn);
+
+  content.appendChild(title);
+  content.appendChild(subtitle);
+  content.appendChild(actions);
+
+  overlay.appendChild(content);
+
+  document.body.appendChild(overlay);
+
+  DOM.incomingCallOverlay = overlay;
+  DOM.incomingCallAcceptBtn = acceptBtn;
+  DOM.incomingCallDeclineBtn = declineBtn;
+}
+
+async function acceptIncomingCall() {
+  // Hide the overlay
+  if (DOM.incomingCallOverlay) {
+    DOM.incomingCallOverlay.remove();
+    DOM.incomingCallOverlay = null;
+    DOM.incomingCallAcceptBtn = null;
+    DOM.incomingCallDeclineBtn = null;
+  }
+
+  try {
+    // Set up local stream if not already set (should be from handleOffer)
+    if (!state.localStream) {
+      state.localStream = await navigator.mediaDevices.getUserMedia({
+        video: state.incomingCall.type === 'video',
+        audio: true,
+      });
+
+      if (state.incomingCall.type === 'video') {
+        DOM.localVideo.srcObject = state.localStream;
+      }
+    }
+
+    // Set call flags BEFORE creating the peer connection so the ontrack
+    // handler routes remote media to the correct element (#remote-video for
+    // video, #remote-audio for voice). Setting isVideoCall later means an
+    // incoming video call's stream is routed to the hidden audio element and
+    // the remote picture never appears.
+    state.callId = state.incomingCall.callId;
+    state.isVideoCall = state.incomingCall.type === 'video';
+    state.isCaller = false;
+    state.isCallActive = true;
+
+    await createPeerConnection();
+
+    // Set remote description (offer)
+    await state.peerConnection.setRemoteDescription(
+      new RTCSessionDescription(state.incomingCall.offer)
+    );
+
+    // Apply any buffered ICE candidates
+    for (const candidate of state.incomingCall.iceCandidates) {
+      try {
+        await state.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (err) {
+        console.warn('Failed to add buffered ICE candidate:', err);
+      }
+    }
+
+    // Create and send answer
+    const answer = await state.peerConnection.createAnswer();
+    await state.peerConnection.setLocalDescription(answer);
+
+    state.socket.emit('call-answer', {
+      room: state.incomingCall.room,
+      answer: answer,
+    });
+
+    // Show appropriate UI
+    if (state.isVideoCall) {
+      showVideoCallUI();
+    } else {
+      showVoiceCallUI();
+    }
+
+    startCallTimer();
+    showToast('Incoming call connected!');
+  } catch (err) {
+    console.error('❌ acceptIncomingCall error:', err);
+    showToast('Could not connect the call.');
+    cleanupCall();
+    // Notify caller of rejection
+    if (state.socket && state.incomingCall.room) {
+      state.socket.emit('call-rejected', { room: state.incomingCall.room });
+    }
+    resetIncomingCallState();
+  }
+}
+
+function declineIncomingCall() {
+  // Notify caller
+  if (state.socket && state.incomingCall.room) {
+    state.socket.emit('call-rejected', { room: state.incomingCall.room });
+  }
+
+  // Hide overlay
+  if (DOM.incomingCallOverlay) {
+    DOM.incomingCallOverlay.remove();
+    DOM.incomingCallOverlay = null;
+    DOM.incomingCallAcceptBtn = null;
+    DOM.incomingCallDeclineBtn = null;
+  }
+
+  showToast('Call declined.');
+  resetIncomingCallState();
+}
+
+function resetIncomingCallState() {
+  state.incomingCall = {
+    offer: null,
+    type: null,
+    callId: null,
+    room: null,
+    iceCandidates: []
+  };
 }
 
 // ─── Call UI ─────────────────────────────────────────────────────────────

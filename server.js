@@ -142,7 +142,17 @@ io.on('connection', (socket) => {
   // ── Register ──────────────────────────────────────────────────────────────
   socket.on('register', (data) => {
     if (isRateLimited('register', 500)) return;
-  // Existing registration logic (unchanged)
+
+    // Re-registration (e.g. a socket that reconnected mid-session): tear down
+    // the previous profile before replacing it. Without this, an active partner
+    // would be left orphaned in 'chatting' state, and a reused custom username
+    // would falsely collide with the stale entry still held in `users`.
+    const previous = users.get(socket.id);
+    if (previous) {
+      const previousRoom = previous.room;
+      cleanupUser(socket.id);
+      if (previousRoom) socket.leave(previousRoom);
+    }
 
     const username = data.username?.trim() || generateUsername();
 
@@ -272,7 +282,11 @@ io.on('connection', (socket) => {
 
       console.log(`💞 Matched: ${user.username} <-> ${partner.username}`);
     } else {
-      waitingQueue.push(socket.id);
+      // Guard against a repeated find-stranger enqueueing the same socket
+      // twice — cancel-finding/cleanupUser only ever remove one occurrence.
+      if (!waitingQueue.includes(socket.id)) {
+        waitingQueue.push(socket.id);
+      }
       socket.emit('waiting');
       console.log(`⏳ ${user.username} is waiting for a match...`);
     }
@@ -432,6 +446,17 @@ io.on('connection', (socket) => {
     if (!user || !user.room) return;
     socket.to(user.room).emit('call-ended', {
       reason: 'Call ended by the other person'
+    });
+  });
+
+  socket.on('call-rejected', () => {
+    if (isRateLimited('call-rejected', 500)) return;
+    const user = users.get(socket.id);
+    if (!user || !user.room) return;
+    // Relay the decline so the caller stops waiting instead of hanging in a
+    // "call in progress" state forever.
+    socket.to(user.room).emit('call-rejected', {
+      reason: 'Call was declined'
     });
   });
 

@@ -550,10 +550,9 @@ function connectSocket(profile) {
     state.currentRoom = null;
     state.strangerInfo = null;
 
-    // End any active call
-    if (state.isCallActive) {
-      cleanupCall();
-    }
+    // End any active call and clear a pending incoming-call overlay
+    // (cleanupCall also removes the overlay and resets incoming-call state).
+    cleanupCall();
 
     // Clear all previous chat messages
     clearChat();
@@ -661,7 +660,8 @@ function connectSocket(profile) {
     console.log('🔴 Socket disconnected');
     stopWaitingTimer();
     showToast('Connection lost. Reconnecting...');
-    if (state.isCallActive) cleanupCall();
+    // Clean up any active call and pending incoming-call overlay.
+    cleanupCall();
     // Clear stale session state so a reconnect/rematch starts clean.
     state.isChatting = false;
     state.currentRoom = null;
@@ -1474,6 +1474,18 @@ function cleanupCall() {
   DOM.voiceMuteBtn.classList.remove('muted');
   DOM.vidMuteBtn.classList.remove('muted');
   DOM.vidCameraBtn.classList.remove('muted');
+
+  // Remove any lingering incoming-call overlay and drop its state. Without
+  // this, if the caller hangs up (or the partner disconnects/skips) while we
+  // are deciding whether to accept, the overlay stays frozen on screen with
+  // dead Accept/Decline buttons.
+  if (DOM.incomingCallOverlay) {
+    DOM.incomingCallOverlay.remove();
+    DOM.incomingCallOverlay = null;
+    DOM.incomingCallAcceptBtn = null;
+    DOM.incomingCallDeclineBtn = null;
+  }
+  resetIncomingCallState();
 }
 
 // ─── Incoming Call UI ────────────────────────────────────────────────────

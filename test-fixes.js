@@ -302,6 +302,61 @@ async function main() {
     return true;
   });
 
+  // ─── Test 9: Server survives non-string payloads ─────────────────
+  // Regression test: these exact payloads crashed the whole server before
+  // the type-coercion fixes (TypeError on .trim()/.startsWith()).
+  await test('Server survives non-string username/message/fileType', async () => {
+    // 9a: register with a non-string username must fall back gracefully
+    const s = io(SERVER, { transports: ['websocket'] });
+    await new Promise(r => s.on('connect', r));
+    const registered = await new Promise((resolve) => {
+      s.on('registered', resolve);
+      s.emit('register', { age: '25', gender: 'Male', username: 12345 });
+      setTimeout(() => resolve(null), 1500);
+    });
+    s.disconnect();
+    if (!registered) return false;
+
+    // 9b: matched pair + non-string chat-message + file-message must not crash
+    const s1 = io(SERVER, { transports: ['websocket'] });
+    const s2 = io(SERVER, { transports: ['websocket'] });
+    await Promise.all([
+      new Promise(r => s1.on('connect', r)),
+      new Promise(r => s2.on('connect', r)),
+    ]);
+    s1.emit('register', { age: '25', gender: 'Male', username: 'CrashProbeA' });
+    s2.emit('register', { age: '25', gender: 'Female', username: 'CrashProbeB' });
+    await delay(300);
+    s1.emit('find-stranger');
+    await delay(100);
+    const matched = await new Promise((resolve) => {
+      s2.emit('find-stranger');
+      s2.on('matched', resolve);
+      setTimeout(() => resolve(null), 2000);
+    });
+    if (!matched) { s1.disconnect(); s2.disconnect(); return false; }
+
+    // The exact payloads that crashed the server before the fix
+    s1.emit('chat-message', { message: 123 });
+    s1.emit('chat-message', { message: { a: 1 } });
+    s1.emit('file-message', { fileName: 'x.mp4', fileType: 123, fileSize: 100, fileData: 'data:video/mp4;base64,xx' });
+    await delay(400);
+
+    // Prove the server is still alive: a fresh socket can register.
+    // reconnection:false + connect_error listener avoids hanging if it's down.
+    const s3 = io(SERVER, { transports: ['websocket'], reconnection: false });
+    const stillAlive = await new Promise((resolve) => {
+      s3.on('registered', () => resolve(true));
+      s3.on('connect_error', () => resolve(false));
+      s3.emit('register', { age: '22', gender: 'Female', username: 'AliveProbe' });
+      setTimeout(() => resolve(false), 1500);
+    });
+    s3.disconnect();
+    s1.disconnect();
+    s2.disconnect();
+    return stillAlive;
+  });
+
   // ─── Summary ─────────────────────────────────────────────────────
   console.log(`\n📊 Results: ${passed} passed, ${failed} failed out of ${passed + failed} tests\n`);
   process.exit(failed > 0 ? 1 : 0);

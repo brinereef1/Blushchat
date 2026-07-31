@@ -154,7 +154,10 @@ io.on('connection', (socket) => {
       if (previousRoom) socket.leave(previousRoom);
     }
 
-    const username = data.username?.trim() || generateUsername();
+    // Coerce to string first — a non-string `username` (e.g. a number or
+    // object) would otherwise throw on .trim() and crash the whole server.
+    const providedName = typeof data.username === 'string' ? data.username.trim() : '';
+    const username = providedName || generateUsername();
 
     if (username.length > 24) {
       socket.emit('error-msg', { message: 'Username must be 24 characters or fewer.' });
@@ -162,7 +165,7 @@ io.on('connection', (socket) => {
     }
 
     // Check custom username uniqueness
-    if (data.username?.trim() && [...users.values()].some(u => u.username && u.username.toLowerCase() === username.toLowerCase())) {
+    if (providedName && [...users.values()].some(u => u.username && u.username.toLowerCase() === username.toLowerCase())) {
       socket.emit('error-msg', { message: 'Username already taken. Please choose another or leave blank for an anonymous name.' });
       return;
     }
@@ -352,7 +355,9 @@ io.on('connection', (socket) => {
     const user = users.get(socket.id);
     if (!user || !user.room) return;
 
-    const rawMessage = data.message?.trim();
+    // Coerce to string first — a non-string `message` would throw on .trim()
+    // and crash the whole server.
+    const rawMessage = typeof data.message === 'string' ? data.message.trim() : '';
     if (!rawMessage || rawMessage.length > 500) return;
 
     // Escape user‑provided content to prevent XSS
@@ -380,9 +385,12 @@ io.on('connection', (socket) => {
       video: 20 * 1024 * 1024,
       audio: 10 * 1024 * 1024,
     };
-    const category = fileType.startsWith('image/') ? 'image'
-                   : fileType.startsWith('video/') ? 'video'
-                   : fileType.startsWith('audio/') ? 'audio'
+    // Coerce to string first — a non-string `fileType` would throw on
+    // .startsWith() and crash the whole server.
+    const fileTypeStr = typeof fileType === 'string' ? fileType : '';
+    const category = fileTypeStr.startsWith('image/') ? 'image'
+                   : fileTypeStr.startsWith('video/') ? 'video'
+                   : fileTypeStr.startsWith('audio/') ? 'audio'
                    : null;
     const maxBytes = sizeLimits[category] || 5 * 1024 * 1024;
     if (fileSize > maxBytes) return;

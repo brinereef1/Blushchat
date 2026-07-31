@@ -29,8 +29,9 @@ const state = {
   // Profile saved for reconnection
   userProfile: null,
 
-  // Guard to prevent auto-find after manual cancel
-  isSearchCancelled: false,
+  // True when the user (or the tab closing) intentionally disconnected — used
+  // to suppress the misleading "Connection lost. Reconnecting..." toast.
+  intentionalDisconnect: false,
 
   // Waiting timer
   waitingTimerInterval: null,
@@ -233,13 +234,18 @@ function setupFilterSidebar() {
     });
   }
 
-  // Show filter tip after 20s if user has restrictive filters
+  // Show filter tip after 20s if the user has restrictive filters APPLIED.
+  // Base it on state.userProfile (the actual applied filters), not the sidebar's
+  // current DOM values — the sidebar may never have been opened, and filters set
+  // on the landing page wouldn't otherwise be reflected here.
   setTimeout(() => {
     const filterTip = document.getElementById('filter-tip');
     if (!filterTip) return;
-    const gender = genderSelect ? genderSelect.value : 'any';
-    const minAge = minAgeInput ? parseInt(minAgeInput.value) || 18 : 18;
-    const maxAge = maxAgeInput ? parseInt(maxAgeInput.value) || 100 : 100;
+    const profile = state.userProfile;
+    if (!profile) return; // not registered yet — no filters applied, no tip
+    const gender = profile.filterGender || 'any';
+    const minAge = profile.filterMinAge || 18;
+    const maxAge = profile.filterMaxAge || 100;
     if (gender !== 'any' || minAge > 18 || maxAge < 100) {
       filterTip.classList.remove('hidden');
     }
@@ -484,6 +490,9 @@ function connectSocket(profile) {
   // re-submitted the form), close it so we don't register twice with the server.
   if (state.socket) state.socket.disconnect();
 
+  // Any disconnect from here on is an intentional new connection.
+  state.intentionalDisconnect = false;
+
   state.socket = io({
     transports: ['websocket', 'polling'],
     reconnection: true,
@@ -575,7 +584,6 @@ function connectSocket(profile) {
     connectBtn.textContent = 'Find a New Connection';
     connectBtn.addEventListener('click', () => {
       clearChat();
-      state.isSearchCancelled = false;
       showScreen('connecting-screen');
       state.socket.emit('find-stranger');
     });
@@ -583,6 +591,7 @@ function connectSocket(profile) {
     leaveBtn.className = 'btn-secondary';
     leaveBtn.textContent = 'Leave';
     leaveBtn.addEventListener('click', () => {
+      state.intentionalDisconnect = true;
       if (state.socket) state.socket.disconnect();
       resetToLanding();
     });
@@ -658,7 +667,12 @@ function connectSocket(profile) {
   state.socket.on('disconnect', () => {
     console.log('🔴 Socket disconnected');
     stopWaitingTimer();
-    showToast('Connection lost. Reconnecting...');
+    // Only warn about a lost connection if it wasn't deliberate (leaving,
+    // closing the tab). Showing "Reconnecting..." right after the user hits
+    // Leave is confusing.
+    if (!state.intentionalDisconnect) {
+      showToast('Connection lost. Reconnecting...');
+    }
     // Clean up any active call and pending incoming-call overlay.
     cleanupCall();
     // Clear stale session state so a reconnect/rematch starts clean.
@@ -695,7 +709,6 @@ function connectSocket(profile) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function onCancelFinding() {
-  state.isSearchCancelled = true;
   if (state.socket) {
     state.socket.emit('cancel-finding');
   }
@@ -714,6 +727,9 @@ function onLeave() {
   if (state.isCallActive) {
     cleanupCall();
   }
+  // Mark the disconnect as deliberate so the client's 'disconnect' handler
+  // doesn't show a misleading "Connection lost. Reconnecting..." toast.
+  state.intentionalDisconnect = true;
   // Disconnect socket — server auto-cleans user data on disconnect
   if (state.socket) {
     state.socket.disconnect();
@@ -1121,17 +1137,6 @@ function openLightbox(src) {
   document.body.style.overflow = 'hidden';
 }
 
-// ─── Download File ───────────────────────────────────────────────────────
-
-function downloadFile(dataUri, filename) {
-  const link = document.createElement('a');
-  link.href = dataUri;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-}
-
 // Close lightbox on Escape
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
@@ -1234,7 +1239,7 @@ async function startCall(isVideo) {
 async function handleOffer(data) {
   if (state.isCallActive) {
     // Glare: both sides dialed at once. Deterministically pick one caller to
-    // win — the smaller callId keeps its offer; the loser tears down its offer; the loser tears down its own
+    // win — the smaller callId keeps its offer; the loser tears down its own
     // outgoing call and answers the winner's offer. Otherwise both reject each
     // other and no connection is ever established.
     if (state.callId && data.callId && data.callId < state.callId) {
@@ -1702,6 +1707,8 @@ function getAvatarGradient(username) {
 // We add a beforeunload as a safety net:
 
 window.addEventListener('beforeunload', () => {
+  // Tab/window closing is deliberate — don't surface "Reconnecting..." toast.
+  state.intentionalDisconnect = true;
   if (state.socket) {
     state.socket.disconnect();
   }

@@ -109,6 +109,17 @@ function cleanupUser(socketId) {
   console.log(`🗑️  Cleaned up ${user.username} (${socketId}). Online: ${users.size}`);
 }
 
+// ─── Helper: normalize an age-filter range ───────────────────────────────────
+// Clamps both bounds to 18–100 and swaps them if inverted. A reversed range
+// (min > max) would otherwise make `passesFilters`' ageMatch impossible and
+// strand the user in an un-matchable state forever.
+function normalizeAgeFilter(min, max) {
+  let lo = Math.max(18, Math.min(100, parseInt(min, 10) || 18));
+  let hi = Math.max(18, Math.min(100, parseInt(max, 10) || 100));
+  if (lo > hi) [lo, hi] = [hi, lo];
+  return { min: lo, max: hi };
+}
+
 // ─── Helper: check if two users pass each other's filters ─────────────────────
 function passesFilters(seeker, target) {
   // Gender matching according to seeker's filter
@@ -178,6 +189,9 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Filter preferences – default to show all users. Normalize server-side so
+    // a reversed/out-of-range range can't leave the user un-matchable.
+    const ageFilter = normalizeAgeFilter(data.filterMinAge, data.filterMaxAge);
     const user = {
       id: socket.id,
       username,
@@ -188,8 +202,8 @@ io.on('connection', (socket) => {
       room: null,
       // Filter preferences – default to show all users
       filterGender: data.filterGender || 'any', // any | men | women | non-binary
-      filterMinAge: parseInt(data.filterMinAge) || 18,
-      filterMaxAge: parseInt(data.filterMaxAge) || 100
+      filterMinAge: ageFilter.min,
+      filterMaxAge: ageFilter.max
     };
 
     users.set(socket.id, user);
@@ -211,18 +225,40 @@ io.on('connection', (socket) => {
     if (!user) return;
 
     if (data.filterGender) user.filterGender = data.filterGender;
-    if (data.filterMinAge) user.filterMinAge = parseInt(data.filterMinAge) || 18;
-    if (data.filterMaxAge) user.filterMaxAge = parseInt(data.filterMaxAge) || 100;
+
+    // Clamp + normalize server-side (min ≤ max, 18–100) so a reversed or
+    // out-of-range update can't strand the user in an un-matchable state.
+    const ageFilter = normalizeAgeFilter(
+      data.filterMinAge !== undefined ? data.filterMinAge : user.filterMinAge,
+      data.filterMaxAge !== undefined ? data.filterMaxAge : user.filterMaxAge
+    );
+    user.filterMinAge = ageFilter.min;
+    user.filterMaxAge = ageFilter.max;
 
     console.log(`🔧 ${user.username} updated filters: ${user.filterGender}, ${user.filterMinAge}-${user.filterMaxAge}`);
   });
 
   // ── Find Stranger ─────────────────────────────────────────────────────────
   socket.on('find-stranger', () => {
-    if (isRateLimited('find-stranger', 1000)) return;
     const user = users.get(socket.id);
     if (!user) {
       socket.emit('error-msg', { message: 'Please register first.' });
+      return;
+    }
+
+    // The rate limit is a spam guard, not a state machine: a dropped event must
+    // never leave an asking user stranded OUTSIDE the queue. That happened right
+    // after skip-stranger / a partner leaving / a quick retry — the auto-re-find
+    // landed inside the 1s window, was silently dropped, and the user sat on the
+    // "finding" screen with status 'registered'/'idle', unmatchable. So within
+    // the window we coalesce instead of dropping: if the user isn't already
+    // queued or chatting, re-queue them (skip the O(n) scan).
+    if (isRateLimited('find-stranger', 1000)) {
+      if (user.status !== 'chatting' && user.status !== 'waiting') {
+        user.status = 'waiting';
+        if (!waitingQueue.includes(socket.id)) waitingQueue.push(socket.id);
+        socket.emit('waiting');
+      }
       return;
     }
 

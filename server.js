@@ -440,7 +440,10 @@ io.on('connection', (socket) => {
   });
 
   socket.on('ice-candidate', (data) => {
-    if (isRateLimited('ice-candidate', 200)) return;
+    // No rate limit here on purpose: ICE candidates trickle out in bursts
+    // during call setup, and dropping even a few of them can prevent the
+    // WebRTC connection from ever establishing (→ silent call that the other
+    // side then "hangs up"). Volume is tiny (dozens per call, relayed 1:1).
     const user = users.get(socket.id);
     if (!user || !user.room) return;
     socket.to(user.room).emit('ice-candidate', {

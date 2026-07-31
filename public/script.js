@@ -21,8 +21,7 @@ const state = {
   isMuted: false,
   isCameraOff: false,
   callTimerInterval: null,
-  iceDisconnectTimer: null,
-  connectionDisconnectTimer: null,
+  disconnectGraceTimer: null,
 
   // File sharing
   pendingFile: null,
@@ -1266,25 +1265,69 @@ async function handleAnswer(data) {
       new RTCSessionDescription(data.answer)
     );
     console.log('✅ Remote description set (answer)');
+    // Candidates that raced the answer can now be applied.
+    flushBufferedIceCandidates();
   } catch (err) {
     console.error('❌ handleAnswer error:', err);
   }
 }
 
-async function handleIceCandidate(data) {
-  // If we have an incoming call waiting for user acceptance, buffer the candidate
-  if (state.incomingCall.offer && !state.peerConnection) {
-    state.incomingCall.iceCandidates.push(data.candidate);
+// ─── ICE Candidate Buffering ─────────────────────────────────────────────
+// addIceCandidate() throws if the remote description isn't set yet. That is
+// exactly when candidates trickle in: the answerer's candidates can race the
+// answer back to the caller, and the caller's candidates can race the offer
+// being accepted. Dropping them there silently broke call setup. Buffer and
+// flush once the remote description is in place.
+function bufferOrAddIceCandidate(candidate) {
+  if (!state.peerConnection || !state.peerConnection.remoteDescription) {
+    state.incomingCall.iceCandidates.push(candidate);
     return;
   }
+  state.peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
+    .catch((err) => console.error('❌ addIceCandidate error:', err));
+}
 
-  if (!state.peerConnection) return;
-  try {
-    await state.peerConnection.addIceCandidate(
-      new RTCIceCandidate(data.candidate)
-    );
-  } catch (err) {
-    console.error('❌ handleIceCandidate error:', err);
+function flushBufferedIceCandidates() {
+  if (!state.peerConnection || !state.peerConnection.remoteDescription) return;
+  const buffered = state.incomingCall.iceCandidates;
+  state.incomingCall.iceCandidates = [];
+  for (const candidate of buffered) {
+    state.peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
+      .catch((err) => console.warn('Failed to add buffered ICE candidate:', err));
+  }
+}
+
+async function handleIceCandidate(data) {
+  bufferOrAddIceCandidate(data.candidate);
+}
+
+// ─── Disconnect Grace ─────────────────────────────────────────────────────
+// WebRTC's iceConnectionState/connectionState routinely dip to 'disconnected'
+// transiently (NAT mapping refresh, ICE restart, brief network blips) and then
+// recover on their own. Auto-hanging up within a few seconds killed perfectly
+// good calls. One shared timer for both signals: 'disconnected' gets a
+// generous window, 'failed' (terminal) a short one, and any healthy state
+// cancels it. cleanupCall() clears it too.
+function startDisconnectGrace(ms) {
+  clearDisconnectGrace();
+  state.disconnectGraceTimer = setTimeout(() => {
+    state.disconnectGraceTimer = null;
+    if (!state.isCallActive || !state.peerConnection) return;
+    const ice = state.peerConnection.iceConnectionState;
+    const conn = state.peerConnection.connectionState;
+    const stillDown = ice === 'disconnected' || ice === 'failed' ||
+                      conn === 'disconnected' || conn === 'failed';
+    if (stillDown) {
+      showToast('Call connection lost.');
+      cleanupCall();
+    }
+  }, ms);
+}
+
+function clearDisconnectGrace() {
+  if (state.disconnectGraceTimer) {
+    clearTimeout(state.disconnectGraceTimer);
+    state.disconnectGraceTimer = null;
   }
 }
 
@@ -1331,65 +1374,19 @@ async function createPeerConnection() {
   state.peerConnection.oniceconnectionstatechange = () => {
     const connState = state.peerConnection.iceConnectionState;
     console.log('iceConnectionState:', connState);
-    if (connState === 'disconnected' || connState === 'failed') {
-      if (state.isCallActive) {
-        // Clear any existing timer
-        if (state.iceDisconnectTimer) {
-          clearTimeout(state.iceDisconnectTimer);
-          state.iceDisconnectTimer = null;
-        }
-        // Start a timer to allow for potential recovery
-        state.iceDisconnectTimer = setTimeout(() => {
-          // Re-check state after delay
-          if (state.isCallActive && state.peerConnection) {
-            const currentState = state.peerConnection.iceConnectionState;
-            if (currentState === 'disconnected' || currentState === 'failed') {
-              showToast('Call connection lost.');
-              cleanupCall();
-            }
-          }
-          state.iceDisconnectTimer = null;
-        }, 5000); // 5 second grace period
-      }
-    } else if (connState === 'connected' || connState === 'completed') {
-      // Clear timer if connection recovers
-      if (state.iceDisconnectTimer) {
-        clearTimeout(state.iceDisconnectTimer);
-        state.iceDisconnectTimer = null;
-      }
-    }
+    // 'disconnected' is transient and self-heals — give it a generous window.
+    // 'failed' is terminal — a short one. Healthy states cancel the timer.
+    if (connState === 'failed') startDisconnectGrace(5000);
+    else if (connState === 'disconnected') startDisconnectGrace(15000);
+    else if (connState === 'connected' || connState === 'completed') clearDisconnectGrace();
   };
 
   state.peerConnection.onconnectionstatechange = () => {
     const connState = state.peerConnection.connectionState;
     console.log('connectionState:', connState);
-    if (connState === 'disconnected' || connState === 'failed') {
-      if (state.isCallActive) {
-        // Clear any existing timer
-        if (state.connectionDisconnectTimer) {
-          clearTimeout(state.connectionDisconnectTimer);
-          state.connectionDisconnectTimer = null;
-        }
-        // Start a timer to allow for potential recovery
-        state.connectionDisconnectTimer = setTimeout(() => {
-          // Re-check state after delay
-          if (state.isCallActive && state.peerConnection) {
-            const currentState = state.peerConnection.connectionState;
-            if (currentState === 'disconnected' || currentState === 'failed') {
-              showToast('Call disconnected.');
-              cleanupCall();
-            }
-          }
-          state.connectionDisconnectTimer = null;
-        }, 5000); // 5 second grace period
-      }
-    } else if (connState === 'connected' || connState === 'completed') {
-      // Clear timer if connection recovers
-      if (state.connectionDisconnectTimer) {
-        clearTimeout(state.connectionDisconnectTimer);
-        state.connectionDisconnectTimer = null;
-      }
-    }
+    if (connState === 'failed') startDisconnectGrace(5000);
+    else if (connState === 'disconnected') startDisconnectGrace(15000);
+    else if (connState === 'connected' || connState === 'completed') clearDisconnectGrace();
   };
 }
 
@@ -1454,11 +1451,12 @@ function cleanupCall() {
   state.isMuted = false;
   state.isCameraOff = false;
 
-  // Stop timer
+  // Stop timers
   if (state.callTimerInterval) {
     clearInterval(state.callTimerInterval);
     state.callTimerInterval = null;
   }
+  clearDisconnectGrace();
 
   // Hide call UIs
   DOM.voiceCallBar.classList.add('hidden');
@@ -1578,14 +1576,8 @@ async function acceptIncomingCall() {
       new RTCSessionDescription(state.incomingCall.offer)
     );
 
-    // Apply any buffered ICE candidates
-    for (const candidate of state.incomingCall.iceCandidates) {
-      try {
-        await state.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-      } catch (err) {
-        console.warn('Failed to add buffered ICE candidate:', err);
-      }
-    }
+    // Apply any buffered ICE candidates (remote description is now set)
+    flushBufferedIceCandidates();
 
     // Create and send answer
     const answer = await state.peerConnection.createAnswer();

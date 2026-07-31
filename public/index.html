@@ -267,10 +267,12 @@
   <!-- ─── Scripts ─────────────────────────────────────────────────── -->
   <script src="/socket.io/socket.io.min.js"></script>
   <script src="script.js"></script>
-  <!-- Hidden audio element for voice calls — video calls use #remote-video,
-       but that element is display:none during a voice call, and hidden video
-       elements don't reliably play audio in all browsers. -->
-  <audio id="remote-audio" autoplay playsinline style="display:none"></audio>
+  <!-- Remote audio for voice calls — video calls use #remote-video.
+       Must NOT be display:none: Chromium does not reliably start MediaStream
+       audio on a display:none element, which left voice calls silent.
+       Hidden off-screen instead (still "rendered", so it plays). -->
+  <audio id="remote-audio" autoplay playsinline
+         style="position:fixed; left:-10000px; top:0; width:1px; height:1px; pointer-events:none; opacity:0.01"></audio>
   <!-- Filter Sidebar (opened from filter button in connecting screen) -->
   <div id="filter-sidebar" class="sidebar">
     <h3 style="margin-top:0;">Match Filters</h3>

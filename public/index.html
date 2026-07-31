@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BlushChat — Connect with a Stranger</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="filter.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💕</text></svg>">
+</head>
+<body>
+
+  <!-- ─── Floating Hearts Background ─────────────────────────────── -->
+  <div id="hearts-bg" aria-hidden="true"></div>
+
+  <!-- ─── Toast / Notification ────────────────────────────────────── -->
+  <div id="toast-container" aria-live="polite"></div>
+
+  <!-- ──────── SCREEN 1: LANDING / REGISTRATION ──────────────────── -->
+  <div id="landing-screen" class="screen active">
+    <div class="landing-card">
+      <div class="logo-wrapper">
+        <span class="logo-icon">💕</span>
+      </div>
+      <h1 class="brand-title">BlushChat</h1>
+      <p class="tagline">A chance to connect. A moment to share.</p>
+
+      <form id="registration-form" autocomplete="off">
+        <button type="button" id="toggle-filter-btn" class="btn-secondary" style="margin-top:12px; margin-bottom:8px;">Filters ▾</button>
+        <div id="filter-options" class="hidden" style="margin-top:8px;">
+          <div class="form-group">
+            <label class="filter-label">Gender</label>
+            <div class="select-wrapper filter-select">
+              <span class="input-icon">⚧️</span>
+              <select id="filter-gender-select">
+                <option value="any">Any gender</option>
+                <option value="men">Men</option>
+                <option value="women">Women</option>
+                <option value="non-binary">Non‑binary</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="filter-label">Age Range</label>
+            <div class="range-values">
+              <span id="filter-min-age-display">18</span>
+              <span class="range-sep">—</span>
+              <span id="filter-max-age-display">100</span>
+            </div>
+            <div class="dual-range">
+              <input type="range" id="filter-min-age" class="range-input" min="18" max="100" value="18" step="1" />
+              <input type="range" id="filter-max-age" class="range-input" min="18" max="100" value="100" step="1" />
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="username-input" class="sr-only">Your name</label>
+          <div class="input-wrapper">
+            <span class="input-icon">👤</span>
+            <input
+              type="text"
+              id="username-input"
+              placeholder="Your name (optional)"
+              maxlength="24"
+            />
+          </div>
+          <span class="input-hint">Leave blank to stay anonymous</span>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group half">
+            <label for="age-select" class="sr-only">Age</label>
+            <div class="select-wrapper">
+              <span class="input-icon">🎂</span>
+              <select id="age-select" required>
+                <option value="" disabled selected>Age</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group half">
+            <label for="gender-select" class="sr-only">Gender</label>
+            <div class="select-wrapper">
+              <span class="input-icon">⚧️</span>
+              <select id="gender-select" required>
+                <option value="" disabled selected>Gender</option>
+                <option value="Female">Female</option>
+                <option value="Male">Male</option>
+                <option value="Non-binary">Non-binary</option>
+                <option value="Rather not say">Rather not say</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-primary" id="find-btn">
+          <span class="btn-text">Find a Connection</span>
+          <span class="btn-arrow">→</span>
+        </button>
+      </form>
+
+      <p class="disclaimer">
+        No account needed. Leave anytime — you'll disappear instantly. ✨
+      </p>
+    </div>
+  </div>
+
+  <!-- ──────── SCREEN 2: CONNECTING / WAITING ────────────────────── -->
+  <div id="connecting-screen" class="screen">
+    <!-- Filter button to open sidebar -->
+    <button id="filter-btn" class="icon-btn" title="Filters" style="position:absolute; top:12px; right:12px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="9"/><line x1="4" y1="3" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="3" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="15"/><line x1="20" y1="3" x2="20" y2="3"/></svg>
+    </button>
+    <!-- Filter tip (shown after 1 min if filter set) -->
+    <p id="filter-tip" class="filter-tip hidden">Try adjusting your Filter to see more matches.</p>
+    <div class="connecting-card">
+      <div class="heart-pulse" aria-hidden="true">💕</div>
+      <h2 class="connecting-title">Finding your stranger...</h2>
+      <p class="connecting-sub">Someone out there is waiting to meet you</p>
+      <p id="waiting-timer" class="waiting-timer"></p>
+      <div class="connecting-dots">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <button id="cancel-btn" class="btn-secondary">Cancel</button>
+    </div>
+  </div>
+
+  <!-- ──────── SCREEN 3: CHAT ─────────────────────────────────────── -->
+  <div id="chat-screen" class="screen">
+    <!-- Header -->
+    <header id="chat-header">
+      <div class="stranger-profile">
+        <div class="stranger-avatar" id="stranger-avatar">
+          <span class="avatar-emoji">💫</span>
+          <span class="online-dot"></span>
+        </div>
+        <div class="stranger-details">
+          <span class="stranger-name" id="stranger-name">Stranger</span>
+          <span class="stranger-meta" id="stranger-meta">— • —</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="voice-call-btn" class="icon-btn" title="Voice call" aria-label="Start voice call">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        </button>
+        <button id="video-call-btn" class="icon-btn" title="Video call" aria-label="Start video call">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+        </button>
+        <button id="skip-btn" class="icon-btn skip-btn" title="Next stranger" aria-label="Skip to next stranger">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+        </button>
+        <button id="leave-btn" class="icon-btn leave-btn" title="Leave" aria-label="Leave conversation">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Messages -->
+    <div id="messages-container">
+      <div class="messages-start">
+        <div class="start-icon">💬</div>
+        <p>You're now connected. Say hello!</p>
+      </div>
+    </div>
+
+    <!-- Typing indicator -->
+    <div id="typing-indicator" class="hidden">
+      <div class="typing-content">
+        <span class="typing-avatar">💫</span>
+        <span class="typing-text">Stranger is typing</span>
+        <span class="typing-animation"><span></span><span></span><span></span></span>
+      </div>
+    </div>
+
+    <!-- File preview (shown when a file is selected) -->
+    <div id="file-preview-area" class="hidden">
+      <div class="file-preview-card">
+        <div class="file-preview-icon" id="file-preview-icon">📷</div>
+        <div class="file-preview-details">
+          <span class="file-preview-name" id="file-preview-name">file.jpg</span>
+          <span class="file-preview-size" id="file-preview-size">—</span>
+        </div>
+        <div class="file-preview-actions">
+          <button id="send-file-btn" class="btn-send-file">Send</button>
+          <button id="file-cancel-btn" class="btn-file-cancel" aria-label="Cancel file">✕</button>
+        </div>
+      </div>
+      <div class="file-preview-progress hidden" id="file-preview-progress">
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+        <span class="progress-text" id="progress-text">Sending...</span>
+      </div>
+    </div>
+
+    <!-- Input area -->
+    <div id="chat-input-area">
+      <div class="input-row">
+        <button id="file-picker-btn" class="btn-file-picker" aria-label="Attach a file" type="button">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        </button>
+        <input type="file" id="file-input" accept="image/*,video/*,audio/*" hidden />
+        <input
+          type="text"
+          id="message-input"
+          placeholder="Type a message..."
+          maxlength="500"
+          autocomplete="off"
+        />
+        <button id="send-btn" class="btn-send" disabled aria-label="Send message">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ──────── VOICE CALL BAR ─────────────────────────────────────── -->
+  <div id="voice-call-bar" class="hidden">
+    <div class="call-bar-inner">
+      <div class="call-bar-info">
+        <span class="call-bar-icon">🎧</span>
+        <div class="call-bar-text">
+          <span class="call-bar-status">Voice Call</span>
+          <span class="call-bar-timer" id="voice-call-timer">00:00</span>
+        </div>
+        <span class="call-bar-wave"><span></span><span></span><span></span><span></span><span></span></span>
+      </div>
+      <div class="call-bar-actions">
+        <button id="voice-mute-btn" class="call-action-btn" title="Mute" aria-label="Toggle mute">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </button>
+        <button id="voice-end-btn" class="call-action-btn end-call-btn" title="End call" aria-label="End call">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ──────── VIDEO CALL OVERLAY ─────────────────────────────────── -->
+  <div id="video-call-overlay" class="hidden">
+    <div class="video-container">
+      <video id="remote-video" autoplay playsinline></video>
+      <div id="remote-video-fallback" class="video-fallback hidden">
+        <span class="fallback-avatar">💫</span>
+        <p>Waiting for partner's video...</p>
+      </div>
+      <div id="local-video-wrapper">
+        <video id="local-video" autoplay playsinline muted></video>
+      </div>
+      <div class="video-top-bar">
+        <span class="call-timer" id="video-call-timer">00:00</span>
+      </div>
+    </div>
+    <div class="video-controls">
+      <button id="vid-mute-btn" class="vid-control-btn" title="Mute" aria-label="Toggle mute">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+      </button>
+      <button id="vid-camera-btn" class="vid-control-btn" title="Toggle camera" aria-label="Toggle camera">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+      </button>
+      <button id="vid-end-btn" class="vid-control-btn end-call-btn" title="End call" aria-label="End call">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ─── Scripts ─────────────────────────────────────────────────── -->
+  <script src="/socket.io/socket.io.min.js"></script>
+  <script src="script.js"></script>
+  <!-- Hidden audio element for voice calls — video calls use #remote-video,
+       but that element is display:none during a voice call, and hidden video
+       elements don't reliably play audio in all browsers. -->
+  <audio id="remote-audio" autoplay playsinline style="display:none"></audio>
+  <!-- Filter Sidebar (opened from filter button in connecting screen) -->
+  <div id="filter-sidebar" class="sidebar">
+    <h3 style="margin-top:0;">Match Filters</h3>
+    <div class="form-group">
+      <label class="filter-label">Gender</label>
+      <div class="select-wrapper filter-select">
+        <span class="input-icon">⚧️</span>
+        <select id="sidebar-filter-gender-select">
+          <option value="any">Any gender</option>
+          <option value="men">Men</option>
+          <option value="women">Women</option>
+          <option value="non-binary">Non‑binary</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="filter-label">Age Range</label>
+      <div class="range-values">
+        <span id="sidebar-filter-min-age-display">18</span>
+        <span class="range-sep">—</span>
+        <span id="sidebar-filter-max-age-display">100</span>
+      </div>
+      <div class="dual-range">
+        <input type="range" id="sidebar-filter-min-age" class="range-input" min="18" max="100" value="18" step="1" />
+        <input type="range" id="sidebar-filter-max-age" class="range-input" min="18" max="100" value="100" step="1" />
+      </div>
+    </div>
+    <button id="apply-filter-btn" class="btn-primary" style="margin-top:12px; width:100%;">Apply</button>
+    <button id="close-filter-btn" class="btn-secondary" style="margin-top:8px; width:100%;">Close</button>
+  </div>
+</body>
+</html>

@@ -454,60 +454,6 @@ io.on('connection', (socket) => {
     });
   });
 
-  // ── WebRTC Signaling ──────────────────────────────────────────────────────
-  socket.on('call-offer', (data) => {
-    if (isRateLimited('call-offer', 200)) return;
-    const user = users.get(socket.id);
-    if (!user || !user.room) return;
-    socket.to(user.room).emit('call-offer', {
-      type: data.type,    // 'video' | 'voice'
-      offer: data.offer,
-      callId: data.callId, // for client-side glare (double-call) resolution
-      room: user.room      // so the callee's incomingCall.room is correct
-    });
-  });
-
-  socket.on('call-answer', (data) => {
-    if (isRateLimited('call-answer', 200)) return;
-    const user = users.get(socket.id);
-    if (!user || !user.room) return;
-    socket.to(user.room).emit('call-answer', {
-      answer: data.answer
-    });
-  });
-
-  socket.on('ice-candidate', (data) => {
-    // No rate limit here on purpose: ICE candidates trickle out in bursts
-    // during call setup, and dropping even a few of them can prevent the
-    // WebRTC connection from ever establishing (→ silent call that the other
-    // side then "hangs up"). Volume is tiny (dozens per call, relayed 1:1).
-    const user = users.get(socket.id);
-    if (!user || !user.room) return;
-    socket.to(user.room).emit('ice-candidate', {
-      candidate: data.candidate
-    });
-  });
-
-  socket.on('end-call', () => {
-    if (isRateLimited('end-call', 500)) return;
-    const user = users.get(socket.id);
-    if (!user || !user.room) return;
-    socket.to(user.room).emit('call-ended', {
-      reason: 'Call ended by the other person'
-    });
-  });
-
-  socket.on('call-rejected', () => {
-    if (isRateLimited('call-rejected', 500)) return;
-    const user = users.get(socket.id);
-    if (!user || !user.room) return;
-    // Relay the decline so the caller stops waiting instead of hanging in a
-    // "call in progress" state forever.
-    socket.to(user.room).emit('call-rejected', {
-      reason: 'Call was declined'
-    });
-  });
-
   // ── Disconnect ────────────────────────────────────────────────────────────
   socket.on('disconnect', () => {
     console.log(`❌ Disconnected: ${socket.id}`);

@@ -10,21 +10,6 @@ const state = {
   strangerInfo: null,
   isChatting: false,
 
-  // WebRTC
-  localStream: null,
-  remoteStream: null,
-  peerConnection: null,
-  isCallActive: false,
-  isVideoCall: false,
-  isCaller: false,
-  callId: null, // unique id per call attempt — used to resolve double-call glare
-  callConnected: false, // true once ICE reaches 'connected' — used to give a
-                        // clearer message when a call never establishes media
-  isMuted: false,
-  isCameraOff: false,
-  callTimerInterval: null,
-  disconnectGraceTimer: null,
-
   // File sharing
   pendingFile: null,
 
@@ -37,49 +22,7 @@ const state = {
 
   // Waiting timer
   waitingTimerInterval: null,
-
-  // Incoming call handling
-  incomingCall: {
-    offer: null,
-    type: null,
-    callId: null,
-    room: null,
-    iceCandidates: []
-  }
 };
-
-// WebRTC ICE configuration.
-//
-// ⚠️ IMPORTANT: STUN-only lets calls work between two tabs on the SAME machine
-// (host candidates) but CANNOT establish media between devices on different
-// networks (e.g. a phone on cellular + a laptop on WiFi). Mobile/cellular
-// networks almost always use symmetric NAT, which STUN can't punch through —
-// the call then stays on the blue "Waiting for partner's video…" screen with
-// no audio, and ICE eventually drops it ("call lost").
-//
-// For reliable phone ↔ laptop / cross-network calls, add a TURN server below,
-// or set `window.BLUSHCHAT_TURN` before script.js runs. Example:
-//   { urls: 'turn:your-server.com:3478', username: 'user', credential: 'pass' }
-const ICE_SERVERS = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-    { urls: 'stun:stun.cloudflare.com:3478' },
-  ],
-};
-
-// Optional runtime override so TURN credentials can be injected without editing
-// this file (e.g. a <script> tag, a build step, or server-rendered config):
-//   window.BLUSHCHAT_TURN = { urls: 'turn:...', username: '...', credential: '...' }
-// or an array of RTCIceServer objects.
-if (typeof window !== 'undefined' && window.BLUSHCHAT_TURN) {
-  const turn = window.BLUSHCHAT_TURN;
-  if (Array.isArray(turn)) ICE_SERVERS.iceServers.push(...turn);
-  else ICE_SERVERS.iceServers.push(turn);
-}
 
 // ─── File Sharing Limits ────────────────────────────────────────────────
 const FILE_LIMITS = {
@@ -130,27 +73,8 @@ const DOM = {
   messageInput: $('#message-input'),
   sendBtn: $('#send-btn'),
   typingIndicator: $('#typing-indicator'),
-  voiceCallBtn: $('#voice-call-btn'),
-  videoCallBtn: $('#video-call-btn'),
   skipBtn: $('#skip-btn'),
   leaveBtn: $('#leave-btn'),
-
-  // Voice call bar
-  voiceCallBar: $('#voice-call-bar'),
-  voiceCallTimer: $('#voice-call-timer'),
-  voiceMuteBtn: $('#voice-mute-btn'),
-  voiceEndBtn: $('#voice-end-btn'),
-
-  // Video overlay
-  videoOverlay: $('#video-call-overlay'),
-  remoteVideo: $('#remote-video'),
-  remoteVideoFallback: $('#remote-video-fallback'),
-  localVideo: $('#local-video'),
-  remoteAudio: $('#remote-audio'),
-  videoCallTimer: $('#video-call-timer'),
-  vidMuteBtn: $('#vid-mute-btn'),
-  vidCameraBtn: $('#vid-camera-btn'),
-  vidEndBtn: $('#vid-end-btn'),
 
   // File sharing
   filePickerBtn: $('#file-picker-btn'),
@@ -167,13 +91,6 @@ const DOM = {
 
   // Toast
   toastContainer: $('#toast-container'),
-
-  // Incoming call overlay (will be created dynamically)
-  incomingCallOverlay: null,
-  incomingCallFrom: null,
-  incomingCallType: null,
-  incomingCallAcceptBtn: null,
-  incomingCallDeclineBtn: null,
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -328,6 +245,7 @@ function init() {
   setupEventListeners();
   createFloatingHearts();
   setupRangeSliders();
+  setupThemeToggle();
 }
 
 function populateAgeOptions() {
@@ -447,26 +365,8 @@ function setupEventListeners() {
   DOM.fileCancelBtn.addEventListener('click', cancelFileSelection);
 
   // Header buttons
-  DOM.voiceCallBtn.addEventListener('click', () => startCall(false));
-  DOM.videoCallBtn.addEventListener('click', () => startCall(true));
   DOM.skipBtn.addEventListener('click', onSkip);
   DOM.leaveBtn.addEventListener('click', onLeave);
-
-  // Voice call controls
-  DOM.voiceMuteBtn.addEventListener('click', toggleMute);
-  DOM.voiceEndBtn.addEventListener('click', endCall);
-
-  // Video call controls
-  DOM.vidMuteBtn.addEventListener('click', toggleMute);
-  DOM.vidCameraBtn.addEventListener('click', toggleCamera);
-  DOM.vidEndBtn.addEventListener('click', endCall);
-
-  // Keyboard: Escape to end call
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && state.isCallActive) {
-      endCall();
-    }
-  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -540,9 +440,6 @@ function connectSocket(profile) {
   });
 
   state.socket.on('matched', (data) => {
-    // Clean up any lingering call state from previous match
-    if (state.isCallActive) cleanupCall();
-
     stopWaitingTimer();
 
     // Clear any previous chat messages for a fresh start
@@ -578,10 +475,6 @@ function connectSocket(profile) {
     state.isChatting = false;
     state.currentRoom = null;
     state.strangerInfo = null;
-
-    // End any active call and clear a pending incoming-call overlay
-    // (cleanupCall also removes the overlay and resets incoming-call state).
-    cleanupCall();
 
     // Clear all previous chat messages
     clearChat();
@@ -637,29 +530,6 @@ function connectSocket(profile) {
     scrollToBottom();
   });
 
-  // ── WebRTC Signaling ──────────────────────────────────────────────
-  state.socket.on('call-offer', async (data) => {
-    await handleOffer(data);
-  });
-
-  state.socket.on('call-answer', async (data) => {
-    await handleAnswer(data);
-  });
-
-  state.socket.on('ice-candidate', async (data) => {
-    await handleIceCandidate(data);
-  });
-
-  state.socket.on('call-ended', (data) => {
-    showToast(data.reason || 'Call ended');
-    cleanupCall();
-  });
-
-  state.socket.on('call-rejected', (data) => {
-    showToast('Call was declined');
-    cleanupCall();
-  });
-
   state.socket.on('error-msg', (data) => {
     showToast(data.message);
     // Registration errors (username taken, invalid age, …) leave the submit
@@ -694,8 +564,6 @@ function connectSocket(profile) {
     if (!state.intentionalDisconnect) {
       showToast('Connection lost. Reconnecting...');
     }
-    // Clean up any active call and pending incoming-call overlay.
-    cleanupCall();
     // Clear stale session state so a reconnect/rematch starts clean.
     state.isChatting = false;
     state.currentRoom = null;
@@ -709,7 +577,6 @@ function connectSocket(profile) {
     if (state.userProfile) {
       state.socket.emit('register', state.userProfile);
     }
-    if (state.isCallActive) cleanupCall();
   });
 
   state.socket.on('connect_error', (err) => {
@@ -737,17 +604,11 @@ function onCancelFinding() {
 
 function onSkip() {
   if (!state.socket) return;
-  if (state.isCallActive) {
-    cleanupCall();
-  }
   state.socket.emit('skip-stranger');
   showToast('Finding someone new...');
 }
 
 function onLeave() {
-  if (state.isCallActive) {
-    cleanupCall();
-  }
   // Mark the disconnect as deliberate so the client's 'disconnect' handler
   // doesn't show a misleading "Connection lost. Reconnecting..." toast.
   state.intentionalDisconnect = true;
@@ -1170,590 +1031,6 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// WEBRTC — CALL MANAGEMENT
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function startCall(isVideo) {
-  if (state.isCallActive) return;
-  if (!state.socket || !state.currentRoom) return;
-
-  state.isVideoCall = isVideo;
-
-  // Unique id for this call attempt — lets us deterministically resolve the
-  // "both sides dialed" (glare) race so a call always connects.
-  state.callId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-
-  // Reset per-call connection tracking.
-  state.callConnected = false;
-
-  // Show connecting toast
-  showToast(`Starting ${isVideo ? 'video' : 'voice'} call...`);
-
-  try {
-    state.localStream = await navigator.mediaDevices.getUserMedia({
-      video: isVideo,
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    });
-
-    // Set local video source
-    if (isVideo) {
-      DOM.localVideo.srcObject = state.localStream;
-    }
-
-    // Random jitter (0–500ms) to prevent double-call race condition
-    await new Promise(r => setTimeout(r, Math.random() * 500));
-
-    await createPeerConnection();
-
-    // Create and send offer
-    const offer = await state.peerConnection.createOffer({
-      offerToReceiveAudio: true,
-      offerToReceiveVideo: isVideo,
-    });
-    await state.peerConnection.setLocalDescription(offer);
-
-    state.socket.emit('call-offer', {
-      room: state.currentRoom,
-      type: isVideo ? 'video' : 'voice',
-      offer: offer,
-      callId: state.callId,
-    });
-
-    state.isCaller = true;
-    state.isCallActive = true;
-
-    // Show appropriate UI
-    if (isVideo) {
-      showVideoCallUI();
-    } else {
-      showVoiceCallUI();
-    }
-
-    startCallTimer();
-  } catch (err) {
-    console.error('❌ startCall error:', err);
-    console.error('Error name:', err.name);
-    console.error('Error message:', err.message);
-
-    // Check if this is a media permissions error from getUserMedia
-    const isMediaError =
-      err.name === 'NotAllowedError' ||
-      err.name === 'PermissionDeniedError' ||
-      err.name === 'NotFoundError' ||
-      err.name === 'NotReadableError' ||
-      err.name === 'OverconstrainedError' ||
-      (err.message && (
-        err.message.includes('Permission denied') ||
-        err.message.includes('not allowed') ||
-        err.message.includes('Could not start') ||
-        err.message.includes('Sensor') ||
-        err.message.includes('Device') ||
-        err.message.includes('media')
-      ));
-
-    if (isMediaError) {
-      showToast('Could not access camera/microphone. Check permissions.');
-    } else {
-      showToast('Could not connect the call. Please try again.');
-    }
-    cleanupCall();
-  }
-}
-
-async function handleOffer(data) {
-  if (state.isCallActive) {
-    // Glare: both sides dialed at once. Deterministically pick one caller to
-    // win — the smaller callId keeps its offer; the loser tears down its own
-    // outgoing call and answers the winner's offer. Otherwise both reject each
-    // other and no connection is ever established.
-    if (state.callId && data.callId && data.callId < state.callId) {
-      cleanupCall(); // lose — drop our outgoing call, then answer below
-    } else {
-      return; // win — keep our call, ignore their offer
-    }
-  }
-
-  // Store incoming call details
-  state.incomingCall.offer = data.offer;
-  state.incomingCall.type = data.type;
-  state.incomingCall.callId = data.callId;
-  state.incomingCall.room = data.room;
-  state.incomingCall.iceCandidates = [];
-
-  // Show incoming call UI
-  showIncomingCallUI();
-
-  // Note: We do NOT auto-answer here. User must click Accept or Decline.
-  // ICE candidates will be buffered until the user accepts.
-}
-
-async function handleAnswer(data) {
-  if (!state.peerConnection) return;
-  try {
-    await state.peerConnection.setRemoteDescription(
-      new RTCSessionDescription(data.answer)
-    );
-    console.log('✅ Remote description set (answer)');
-    // Candidates that raced the answer can now be applied.
-    flushBufferedIceCandidates();
-  } catch (err) {
-    console.error('❌ handleAnswer error:', err);
-  }
-}
-
-// ─── ICE Candidate Buffering ─────────────────────────────────────────────
-// addIceCandidate() throws if the remote description isn't set yet. That is
-// exactly when candidates trickle in: the answerer's candidates can race the
-// answer back to the caller, and the caller's candidates can race the offer
-// being accepted. Dropping them there silently broke call setup. Buffer and
-// flush once the remote description is in place.
-function bufferOrAddIceCandidate(candidate) {
-  if (!state.peerConnection || !state.peerConnection.remoteDescription) {
-    state.incomingCall.iceCandidates.push(candidate);
-    return;
-  }
-  state.peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
-    .catch((err) => console.error('❌ addIceCandidate error:', err));
-}
-
-function flushBufferedIceCandidates() {
-  if (!state.peerConnection || !state.peerConnection.remoteDescription) return;
-  const buffered = state.incomingCall.iceCandidates;
-  state.incomingCall.iceCandidates = [];
-  for (const candidate of buffered) {
-    state.peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
-      .catch((err) => console.warn('Failed to add buffered ICE candidate:', err));
-  }
-}
-
-async function handleIceCandidate(data) {
-  bufferOrAddIceCandidate(data.candidate);
-}
-
-// ─── Disconnect Grace ─────────────────────────────────────────────────────
-// WebRTC's iceConnectionState/connectionState routinely dip to 'disconnected'
-// transiently (NAT mapping refresh, ICE restart, brief network blips) and then
-// recover on their own. Auto-hanging up within a few seconds killed perfectly
-// good calls. One shared timer for both signals: 'disconnected' gets a
-// generous window, 'failed' (terminal) a short one, and any healthy state
-// cancels it. cleanupCall() clears it too.
-function startDisconnectGrace(ms) {
-  clearDisconnectGrace();
-  state.disconnectGraceTimer = setTimeout(() => {
-    state.disconnectGraceTimer = null;
-    if (!state.isCallActive || !state.peerConnection) return;
-    const ice = state.peerConnection.iceConnectionState;
-    const conn = state.peerConnection.connectionState;
-    const stillDown = ice === 'disconnected' || ice === 'failed' ||
-                      conn === 'disconnected' || conn === 'failed';
-    if (stillDown) {
-      if (!state.callConnected) {
-        // The call never established media — almost always a NAT-traversal
-        // problem (STUN can't cross symmetric NAT; a TURN server is required).
-        showToast('Call couldn\'t connect. If you\'re on different networks, a TURN server is needed.');
-      } else {
-        showToast('Call connection lost.');
-      }
-      // Tell the other side the call is over so they don't sit in a dead call
-      // with a running timer.
-      if (state.socket && state.currentRoom) {
-        state.socket.emit('end-call', { room: state.currentRoom });
-      }
-      cleanupCall();
-    }
-  }, ms);
-}
-
-function clearDisconnectGrace() {
-  if (state.disconnectGraceTimer) {
-    clearTimeout(state.disconnectGraceTimer);
-    state.disconnectGraceTimer = null;
-  }
-}
-
-// ─── Create Peer Connection ──────────────────────────────────────────────
-
-async function createPeerConnection() {
-  state.peerConnection = new RTCPeerConnection(ICE_SERVERS, {
-    iceCandidatePoolSize: 3,
-  });
-
-  // Add local tracks
-  if (state.localStream) {
-    state.localStream.getTracks().forEach((track) => {
-      state.peerConnection.addTrack(track, state.localStream);
-    });
-  }
-
-  // Remote stream setup
-  state.remoteStream = new MediaStream();
-
-  state.peerConnection.ontrack = (event) => {
-    console.log('ontrack event:', event);
-    state.remoteStream.addTrack(event.track);
-    // Route remote media to the right element: video calls play through
-    // #remote-video, voice calls through the hidden #remote-audio element
-    // (a display:none video element won't reliably play audio in all browsers).
-    if (state.isVideoCall) {
-      if (DOM.remoteVideo) {
-        DOM.remoteVideo.srcObject = state.remoteStream;
-        tryPlay(DOM.remoteVideo);
-      }
-      // Hide "Waiting for partner's video…" the moment ANY track arrives — a
-      // video track plays through #remote-video, and even an audio-only track
-      // proves the connection is live.
-      DOM.remoteVideoFallback.classList.add('hidden');
-    } else if (DOM.remoteAudio) {
-      DOM.remoteAudio.srcObject = state.remoteStream;
-      tryPlay(DOM.remoteAudio);
-    }
-  };
-
-  state.peerConnection.onicecandidate = (event) => {
-    if (event.candidate && state.socket && state.currentRoom) {
-      state.socket.emit('ice-candidate', {
-        room: state.currentRoom,
-        candidate: event.candidate,
-      });
-    }
-  };
-
-  state.peerConnection.oniceconnectionstatechange = () => {
-    const connState = state.peerConnection.iceConnectionState;
-    console.log('iceConnectionState:', connState);
-    handleCallConnectionState(connState);
-  };
-
-  state.peerConnection.onconnectionstatechange = () => {
-    const connState = state.peerConnection.connectionState;
-    console.log('connectionState:', connState);
-    handleCallConnectionState(connState);
-  };
-}
-
-// Centralises ICE/connection-state handling shared by both oniceconnectionstatechange
-// and onconnectionstatechange.
-function handleCallConnectionState(connState) {
-  // Healthy — cancel any pending teardown and mark the call as connected.
-  if (connState === 'connected' || connState === 'completed') {
-    state.callConnected = true;
-    clearDisconnectGrace();
-    // Belt-and-suspenders: ontrack already hides the fallback, but if a track
-    // arrived before ICE reported 'connected' this keeps "Waiting for partner's
-    // video…" from lingering on a live connection.
-    if (state.isVideoCall && state.remoteStream && state.remoteStream.getTracks().length > 0) {
-      DOM.remoteVideoFallback.classList.add('hidden');
-    }
-    return;
-  }
-  // 'disconnected' is transient and self-heals (NAT mapping refresh, ICE
-  // restart, brief blips) — give it a generous window. 'failed' is terminal but
-  // only tear down if it stays failed (never auto-kill a call that already
-  // connected and is just flickering).
-  if (connState === 'disconnected') startDisconnectGrace(20000);
-  else if (connState === 'failed') startDisconnectGrace(10000);
-}
-
-// Explicitly request playback after wiring up a media stream. The <audio>/<video>
-// elements have `autoplay`, which most browsers honor after the user's click,
-// but some mobile browsers (notably iOS Safari) only start playback when play()
-// is called directly — without this, calls can connect with no audio.
-function tryPlay(el) {
-  if (!el || typeof el.play !== 'function') return;
-  try {
-    const p = el.play();
-    if (p && typeof p.catch === 'function') p.catch(() => {});
-  } catch (err) {
-    // Autoplay may still be blocked — the user just interacted, so it shouldn't be.
-    console.warn('⚠️  Unable to start media playback:', err);
-  }
-}
-
-// ─── Mute / Camera Toggle ────────────────────────────────────────────────
-
-function toggleMute() {
-  if (!state.localStream) return;
-  const audioTrack = state.localStream.getAudioTracks()[0];
-  if (!audioTrack) return;
-
-  audioTrack.enabled = !audioTrack.enabled;
-  state.isMuted = !audioTrack.enabled;
-
-  // Update UI
-  DOM.voiceMuteBtn.classList.toggle('muted', state.isMuted);
-  DOM.vidMuteBtn.classList.toggle('muted', state.isMuted);
-
-  const btns = state.isCallActive ? (state.isVideoCall ? [DOM.vidMuteBtn] : [DOM.voiceMuteBtn]) : [];
-  btns.forEach((btn) => {
-    btn.classList.toggle('muted', state.isMuted);
-  });
-}
-
-function toggleCamera() {
-  if (!state.localStream || !state.isVideoCall) return;
-  const videoTrack = state.localStream.getVideoTracks()[0];
-  if (!videoTrack) return;
-
-  videoTrack.enabled = !videoTrack.enabled;
-  state.isCameraOff = !videoTrack.enabled;
-
-  DOM.vidCameraBtn.classList.toggle('muted', state.isCameraOff);
-}
-
-// ─── End Call ────────────────────────────────────────────────────────────
-
-function endCall() {
-  if (state.isCallActive && state.socket && state.currentRoom) {
-    state.socket.emit('end-call', { room: state.currentRoom });
-  }
-  cleanupCall();
-  showToast('Call ended.');
-}
-
-function cleanupCall() {
-  // Stop local tracks
-  if (state.localStream) {
-    state.localStream.getTracks().forEach((track) => track.stop());
-    state.localStream = null;
-  }
-
-  // Close peer connection
-  if (state.peerConnection) {
-    state.peerConnection.close();
-    state.peerConnection = null;
-  }
-
-  state.remoteStream = null;
-  state.isCallActive = false;
-  state.isVideoCall = false;
-  state.isCaller = false;
-  state.callConnected = false;
-  state.isMuted = false;
-  state.isCameraOff = false;
-
-  // Stop timers
-  if (state.callTimerInterval) {
-    clearInterval(state.callTimerInterval);
-    state.callTimerInterval = null;
-  }
-  clearDisconnectGrace();
-
-  // Hide call UIs
-  DOM.voiceCallBar.classList.add('hidden');
-  DOM.videoOverlay.classList.add('hidden');
-
-  // Reset video/audio elements
-  DOM.remoteVideo.srcObject = null;
-  DOM.localVideo.srcObject = null;
-  if (DOM.remoteAudio) DOM.remoteAudio.srcObject = null;
-  DOM.remoteVideoFallback.classList.remove('hidden');
-
-  // Reset mute/camera button states
-  DOM.voiceMuteBtn.classList.remove('muted');
-  DOM.vidMuteBtn.classList.remove('muted');
-  DOM.vidCameraBtn.classList.remove('muted');
-
-  // Remove any lingering incoming-call overlay and drop its state. Without
-  // this, if the caller hangs up (or the partner disconnects/skips) while we
-  // are deciding whether to accept, the overlay stays frozen on screen with
-  // dead Accept/Decline buttons.
-  if (DOM.incomingCallOverlay) {
-    DOM.incomingCallOverlay.remove();
-    DOM.incomingCallOverlay = null;
-    DOM.incomingCallAcceptBtn = null;
-    DOM.incomingCallDeclineBtn = null;
-  }
-  resetIncomingCallState();
-}
-
-// ─── Incoming Call UI ────────────────────────────────────────────────────
-function showIncomingCallUI() {
-  // Remove any stale overlay from a previous offer
-  if (DOM.incomingCallOverlay) {
-    DOM.incomingCallOverlay.remove();
-    DOM.incomingCallOverlay = null;
-  }
-
-  const callerName = (state.strangerInfo && state.strangerInfo.username) || 'Stranger';
-
-  const overlay = document.createElement('div');
-  overlay.id = 'incoming-call-overlay';
-
-  const content = document.createElement('div');
-  content.className = 'incoming-call-content';
-
-  const title = document.createElement('h2');
-  title.textContent = `${callerName} is calling…`;
-
-  const subtitle = document.createElement('p');
-  subtitle.textContent = state.incomingCall.type === 'video' ? '📹 Video call' : '🎧 Voice call';
-
-  const actions = document.createElement('div');
-  actions.className = 'incoming-call-actions';
-
-  const declineBtn = document.createElement('button');
-  declineBtn.className = 'btn-secondary';
-  declineBtn.textContent = 'Decline';
-  declineBtn.addEventListener('click', declineIncomingCall);
-
-  const acceptBtn = document.createElement('button');
-  acceptBtn.className = 'btn-primary';
-  acceptBtn.textContent = 'Accept';
-  acceptBtn.addEventListener('click', acceptIncomingCall);
-
-  actions.appendChild(declineBtn);
-  actions.appendChild(acceptBtn);
-
-  content.appendChild(title);
-  content.appendChild(subtitle);
-  content.appendChild(actions);
-
-  overlay.appendChild(content);
-
-  document.body.appendChild(overlay);
-
-  DOM.incomingCallOverlay = overlay;
-  DOM.incomingCallAcceptBtn = acceptBtn;
-  DOM.incomingCallDeclineBtn = declineBtn;
-}
-
-async function acceptIncomingCall() {
-  // Hide the overlay
-  if (DOM.incomingCallOverlay) {
-    DOM.incomingCallOverlay.remove();
-    DOM.incomingCallOverlay = null;
-    DOM.incomingCallAcceptBtn = null;
-    DOM.incomingCallDeclineBtn = null;
-  }
-
-  try {
-    // Set up local stream if not already set (should be from handleOffer)
-    if (!state.localStream) {
-      state.localStream = await navigator.mediaDevices.getUserMedia({
-        video: state.incomingCall.type === 'video',
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      });
-
-      if (state.incomingCall.type === 'video') {
-        DOM.localVideo.srcObject = state.localStream;
-      }
-    }
-
-    // Set call flags BEFORE creating the peer connection so the ontrack
-    // handler routes remote media to the correct element (#remote-video for
-    // video, #remote-audio for voice). Setting isVideoCall later means an
-    // incoming video call's stream is routed to the hidden audio element and
-    // the remote picture never appears.
-    state.callId = state.incomingCall.callId;
-    state.isVideoCall = state.incomingCall.type === 'video';
-    state.isCaller = false;
-    state.isCallActive = true;
-    state.callConnected = false;
-
-    await createPeerConnection();
-
-    // Set remote description (offer)
-    await state.peerConnection.setRemoteDescription(
-      new RTCSessionDescription(state.incomingCall.offer)
-    );
-
-    // Apply any buffered ICE candidates (remote description is now set)
-    flushBufferedIceCandidates();
-
-    // Create and send answer
-    const answer = await state.peerConnection.createAnswer();
-    await state.peerConnection.setLocalDescription(answer);
-
-    state.socket.emit('call-answer', {
-      room: state.incomingCall.room,
-      answer: answer,
-    });
-
-    // Show appropriate UI
-    if (state.isVideoCall) {
-      showVideoCallUI();
-    } else {
-      showVoiceCallUI();
-    }
-
-    startCallTimer();
-    showToast('Incoming call connected!');
-  } catch (err) {
-    console.error('❌ acceptIncomingCall error:', err);
-    showToast('Could not connect the call.');
-    cleanupCall();
-    // Notify caller of rejection
-    if (state.socket && state.incomingCall.room) {
-      state.socket.emit('call-rejected', { room: state.incomingCall.room });
-    }
-    resetIncomingCallState();
-  }
-}
-
-function declineIncomingCall() {
-  // Notify caller
-  if (state.socket && state.incomingCall.room) {
-    state.socket.emit('call-rejected', { room: state.incomingCall.room });
-  }
-
-  // Hide overlay
-  if (DOM.incomingCallOverlay) {
-    DOM.incomingCallOverlay.remove();
-    DOM.incomingCallOverlay = null;
-    DOM.incomingCallAcceptBtn = null;
-    DOM.incomingCallDeclineBtn = null;
-  }
-
-  showToast('Call declined.');
-  resetIncomingCallState();
-}
-
-function resetIncomingCallState() {
-  state.incomingCall = {
-    offer: null,
-    type: null,
-    callId: null,
-    room: null,
-    iceCandidates: []
-  };
-}
-
-// ─── Call UI ─────────────────────────────────────────────────────────────
-
-function showVoiceCallUI() {
-  DOM.voiceCallBar.classList.remove('hidden');
-  DOM.videoOverlay.classList.add('hidden');
-  DOM.voiceCallTimer.textContent = '00:00';
-}
-
-function showVideoCallUI() {
-  DOM.videoOverlay.classList.remove('hidden');
-  DOM.voiceCallBar.classList.add('hidden');
-  DOM.videoCallTimer.textContent = '00:00';
-  DOM.remoteVideoFallback.classList.remove('hidden');
-}
-
-// ─── Call Timer ──────────────────────────────────────────────────────────
-
-function startCallTimer() {
-  let seconds = 0;
-  if (state.callTimerInterval) clearInterval(state.callTimerInterval);
-
-  state.callTimerInterval = setInterval(() => {
-    seconds++;
-    const mins = String(Math.floor(seconds / 60)).padStart(2, '0');
-    const secs = String(seconds % 60).padStart(2, '0');
-    const time = `${mins}:${secs}`;
-
-    if (state.isVideoCall) {
-      DOM.videoCallTimer.textContent = time;
-    } else {
-      DOM.voiceCallTimer.textContent = time;
-    }
-  }, 1000);
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // STRANGER AVATAR COLOR
 // ═══════════════════════════════════════════════════════════════════════════
 // Used to give each stranger a unique gradient avatar
@@ -1774,6 +1051,71 @@ function getAvatarGradient(username) {
     hash = username.charCodeAt(i) + ((hash << 5) - hash);
   }
   return colors[Math.abs(hash) % colors.length];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THEME TOGGLE (dark / light)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function getSavedTheme() {
+  try {
+    return localStorage.getItem('blushchat-theme') === 'dark' ? 'dark' : 'light';
+  } catch (e) {
+    return 'light';
+  }
+}
+
+// Reflect the current theme on every .theme-toggle button (icon + tooltip).
+function updateThemeButtons() {
+  const isDark = document.documentElement.dataset.theme === 'dark';
+  document.querySelectorAll('.theme-toggle').forEach((btn) => {
+    const icon = btn.querySelector('.theme-toggle-icon');
+    if (icon) icon.textContent = isDark ? '☀️' : '🌙';
+    btn.title = isDark ? 'Switch to light theme' : 'Switch to dark theme';
+    btn.setAttribute('aria-label', btn.title);
+  });
+}
+
+function applyTheme(theme, animate) {
+  const root = document.documentElement;
+  const body = document.body;
+
+  const commit = () => {
+    // Enable CSS transitions so every surface fades into the new theme.
+    root.classList.add('theme-anim');
+    root.dataset.theme = theme;
+    try {
+      localStorage.setItem('blushchat-theme', theme);
+    } catch (e) {}
+    updateThemeButtons();
+    clearTimeout(root._themeAnimTimer);
+    root._themeAnimTimer = setTimeout(() => {
+      root.classList.remove('theme-anim');
+      body.classList.remove('theme-fading');
+    }, 650);
+  };
+
+  if (animate) {
+    // Fade the page gradient out, swap the theme mid-fade, then let the new
+    // gradient fade back in over the freshly-transitioned solid colors.
+    body.classList.add('theme-fading');
+    setTimeout(commit, 180);
+  } else {
+    commit();
+  }
+}
+
+function toggleTheme() {
+  const root = document.documentElement;
+  const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+  applyTheme(next, true);
+}
+
+function setupThemeToggle() {
+  updateThemeButtons();
+  document.querySelectorAll('.theme-toggle').forEach((btn) => {
+    btn.addEventListener('click', toggleTheme);
+  });
 }
 
 // ─── Window unload handler ───────────────────────────────────────────────

@@ -10,6 +10,15 @@
   <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="filter.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💕</text></svg>">
+  <script>
+    // Apply the saved theme before first paint to avoid a flash of the wrong theme.
+    (function () {
+      try {
+        var t = localStorage.getItem('blushchat-theme');
+        document.documentElement.dataset.theme = t === 'dark' ? 'dark' : 'light';
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
 
@@ -21,6 +30,14 @@
 
   <!-- ──────── SCREEN 1: LANDING / REGISTRATION ──────────────────── -->
   <div id="landing-screen" class="screen active">
+    <div class="top-actions">
+      <button type="button" id="toggle-filter-btn" class="icon-btn" title="Filters" aria-label="Toggle filter options">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="9"/><line x1="4" y1="3" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="3" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="15"/><line x1="20" y1="3" x2="20" y2="3"/></svg>
+      </button>
+      <button type="button" class="icon-btn theme-toggle" title="Toggle dark/light theme" aria-label="Toggle dark/light theme">
+        <span class="theme-toggle-icon">🌙</span>
+      </button>
+    </div>
     <div class="landing-card">
       <div class="logo-wrapper">
         <span class="logo-icon">💕</span>
@@ -29,7 +46,6 @@
       <p class="tagline">A chance to connect. A moment to share.</p>
 
       <form id="registration-form" autocomplete="off">
-        <button type="button" id="toggle-filter-btn" class="btn-secondary" style="margin-top:12px; margin-bottom:8px;">Filters ▾</button>
         <div id="filter-options" class="hidden" style="margin-top:8px;">
           <div class="form-group">
             <label class="filter-label">Gender</label>
@@ -109,10 +125,15 @@
 
   <!-- ──────── SCREEN 2: CONNECTING / WAITING ────────────────────── -->
   <div id="connecting-screen" class="screen">
-    <!-- Filter button to open sidebar -->
-    <button id="filter-btn" class="icon-btn" title="Filters" style="position:absolute; top:12px; right:12px;">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="9"/><line x1="4" y1="3" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="3" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="15"/><line x1="20" y1="3" x2="20" y2="3"/></svg>
-    </button>
+    <div class="top-actions">
+      <!-- Filter button to open sidebar -->
+      <button id="filter-btn" class="icon-btn" title="Filters" aria-label="Open filters">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="9"/><line x1="4" y1="3" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="3" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="15"/><line x1="20" y1="3" x2="20" y2="3"/></svg>
+      </button>
+      <button type="button" class="icon-btn theme-toggle" title="Toggle dark/light theme" aria-label="Toggle dark/light theme">
+        <span class="theme-toggle-icon">🌙</span>
+      </button>
+    </div>
     <!-- Filter tip (shown after 1 min if filter set) -->
     <p id="filter-tip" class="filter-tip hidden">Try adjusting your Filter to see more matches.</p>
     <div class="connecting-card">
@@ -142,11 +163,8 @@
         </div>
       </div>
       <div class="header-actions">
-        <button id="voice-call-btn" class="icon-btn" title="Voice call" aria-label="Start voice call">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-        </button>
-        <button id="video-call-btn" class="icon-btn" title="Video call" aria-label="Start video call">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+        <button type="button" class="icon-btn theme-toggle" title="Toggle dark/light theme" aria-label="Toggle dark/light theme">
+          <span class="theme-toggle-icon">🌙</span>
         </button>
         <button id="skip-btn" class="icon-btn skip-btn" title="Next stranger" aria-label="Skip to next stranger">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
@@ -214,65 +232,9 @@
     </div>
   </div>
 
-  <!-- ──────── VOICE CALL BAR ─────────────────────────────────────── -->
-  <div id="voice-call-bar" class="hidden">
-    <div class="call-bar-inner">
-      <div class="call-bar-info">
-        <span class="call-bar-icon">🎧</span>
-        <div class="call-bar-text">
-          <span class="call-bar-status">Voice Call</span>
-          <span class="call-bar-timer" id="voice-call-timer">00:00</span>
-        </div>
-        <span class="call-bar-wave"><span></span><span></span><span></span><span></span><span></span></span>
-      </div>
-      <div class="call-bar-actions">
-        <button id="voice-mute-btn" class="call-action-btn" title="Mute" aria-label="Toggle mute">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-        </button>
-        <button id="voice-end-btn" class="call-action-btn end-call-btn" title="End call" aria-label="End call">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ──────── VIDEO CALL OVERLAY ─────────────────────────────────── -->
-  <div id="video-call-overlay" class="hidden">
-    <div class="video-container">
-      <video id="remote-video" autoplay playsinline></video>
-      <div id="remote-video-fallback" class="video-fallback hidden">
-        <span class="fallback-avatar">💫</span>
-        <p>Waiting for partner's video...</p>
-      </div>
-      <div id="local-video-wrapper">
-        <video id="local-video" autoplay playsinline muted></video>
-      </div>
-      <div class="video-top-bar">
-        <span class="call-timer" id="video-call-timer">00:00</span>
-      </div>
-    </div>
-    <div class="video-controls">
-      <button id="vid-mute-btn" class="vid-control-btn" title="Mute" aria-label="Toggle mute">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-      </button>
-      <button id="vid-camera-btn" class="vid-control-btn" title="Toggle camera" aria-label="Toggle camera">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-      </button>
-      <button id="vid-end-btn" class="vid-control-btn end-call-btn" title="End call" aria-label="End call">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-      </button>
-    </div>
-  </div>
-
   <!-- ─── Scripts ─────────────────────────────────────────────────── -->
   <script src="/socket.io/socket.io.min.js"></script>
   <script src="script.js"></script>
-  <!-- Remote audio for voice calls — video calls use #remote-video.
-       Must NOT be display:none: Chromium does not reliably start MediaStream
-       audio on a display:none element, which left voice calls silent.
-       Hidden off-screen instead (still "rendered", so it plays). -->
-  <audio id="remote-audio" autoplay playsinline
-         style="position:fixed; left:-10000px; top:0; width:1px; height:1px; pointer-events:none; opacity:0.01"></audio>
   <!-- Filter Sidebar (opened from filter button in connecting screen) -->
   <div id="filter-sidebar" class="sidebar">
     <h3 style="margin-top:0;">Match Filters</h3>

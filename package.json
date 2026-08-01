@@ -1,7 +1,7 @@
 {
   "name": "serendipity",
   "version": "1.0.0",
-  "description": "Random stranger connections - text, voice, and video calling",
+  "description": "Random stranger connections - text chat and file sharing",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

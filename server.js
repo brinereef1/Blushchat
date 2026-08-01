@@ -462,7 +462,8 @@ io.on('connection', (socket) => {
     socket.to(user.room).emit('call-offer', {
       type: data.type,    // 'video' | 'voice'
       offer: data.offer,
-      callId: data.callId // for client-side glare (double-call) resolution
+      callId: data.callId, // for client-side glare (double-call) resolution
+      room: user.room      // so the callee's incomingCall.room is correct
     });
   });
 

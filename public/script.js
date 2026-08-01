@@ -18,6 +18,8 @@ const state = {
   isVideoCall: false,
   isCaller: false,
   callId: null, // unique id per call attempt — used to resolve double-call glare
+  callConnected: false, // true once ICE reaches 'connected' — used to give a
+                        // clearer message when a call never establishes media
   isMuted: false,
   isCameraOff: false,
   callTimerInterval: null,
@@ -46,6 +48,18 @@ const state = {
   }
 };
 
+// WebRTC ICE configuration.
+//
+// ⚠️ IMPORTANT: STUN-only lets calls work between two tabs on the SAME machine
+// (host candidates) but CANNOT establish media between devices on different
+// networks (e.g. a phone on cellular + a laptop on WiFi). Mobile/cellular
+// networks almost always use symmetric NAT, which STUN can't punch through —
+// the call then stays on the blue "Waiting for partner's video…" screen with
+// no audio, and ICE eventually drops it ("call lost").
+//
+// For reliable phone ↔ laptop / cross-network calls, add a TURN server below,
+// or set `window.BLUSHCHAT_TURN` before script.js runs. Example:
+//   { urls: 'turn:your-server.com:3478', username: 'user', credential: 'pass' }
 const ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -53,12 +67,19 @@ const ICE_SERVERS = {
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun3.l.google.com:19302' },
     { urls: 'stun:stun4.l.google.com:19302' },
-    // TURN servers require proper formatting: turn:host:port
-    // For now, we'll use STUN-only to avoid configuration issues
-    // In production, replace with valid TURN server credentials
-    // { urls: 'turn:your-turn-server.com:3478', username: 'username', credential: 'credential' }
+    { urls: 'stun:stun.cloudflare.com:3478' },
   ],
 };
+
+// Optional runtime override so TURN credentials can be injected without editing
+// this file (e.g. a <script> tag, a build step, or server-rendered config):
+//   window.BLUSHCHAT_TURN = { urls: 'turn:...', username: '...', credential: '...' }
+// or an array of RTCIceServer objects.
+if (typeof window !== 'undefined' && window.BLUSHCHAT_TURN) {
+  const turn = window.BLUSHCHAT_TURN;
+  if (Array.isArray(turn)) ICE_SERVERS.iceServers.push(...turn);
+  else ICE_SERVERS.iceServers.push(turn);
+}
 
 // ─── File Sharing Limits ────────────────────────────────────────────────
 const FILE_LIMITS = {
@@ -1162,13 +1183,16 @@ async function startCall(isVideo) {
   // "both sides dialed" (glare) race so a call always connects.
   state.callId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
+  // Reset per-call connection tracking.
+  state.callConnected = false;
+
   // Show connecting toast
   showToast(`Starting ${isVideo ? 'video' : 'voice'} call...`);
 
   try {
     state.localStream = await navigator.mediaDevices.getUserMedia({
       video: isVideo,
-      audio: true,
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
 
     // Set local video source
@@ -1323,7 +1347,18 @@ function startDisconnectGrace(ms) {
     const stillDown = ice === 'disconnected' || ice === 'failed' ||
                       conn === 'disconnected' || conn === 'failed';
     if (stillDown) {
-      showToast('Call connection lost.');
+      if (!state.callConnected) {
+        // The call never established media — almost always a NAT-traversal
+        // problem (STUN can't cross symmetric NAT; a TURN server is required).
+        showToast('Call couldn\'t connect. If you\'re on different networks, a TURN server is needed.');
+      } else {
+        showToast('Call connection lost.');
+      }
+      // Tell the other side the call is over so they don't sit in a dead call
+      // with a running timer.
+      if (state.socket && state.currentRoom) {
+        state.socket.emit('end-call', { room: state.currentRoom });
+      }
       cleanupCall();
     }
   }, ms);
@@ -1360,10 +1395,17 @@ async function createPeerConnection() {
     // #remote-video, voice calls through the hidden #remote-audio element
     // (a display:none video element won't reliably play audio in all browsers).
     if (state.isVideoCall) {
-      if (DOM.remoteVideo) DOM.remoteVideo.srcObject = state.remoteStream;
+      if (DOM.remoteVideo) {
+        DOM.remoteVideo.srcObject = state.remoteStream;
+        tryPlay(DOM.remoteVideo);
+      }
+      // Hide "Waiting for partner's video…" the moment ANY track arrives — a
+      // video track plays through #remote-video, and even an audio-only track
+      // proves the connection is live.
       DOM.remoteVideoFallback.classList.add('hidden');
     } else if (DOM.remoteAudio) {
       DOM.remoteAudio.srcObject = state.remoteStream;
+      tryPlay(DOM.remoteAudio);
     }
   };
 
@@ -1379,20 +1421,52 @@ async function createPeerConnection() {
   state.peerConnection.oniceconnectionstatechange = () => {
     const connState = state.peerConnection.iceConnectionState;
     console.log('iceConnectionState:', connState);
-    // 'disconnected' is transient and self-heals — give it a generous window.
-    // 'failed' is terminal — a short one. Healthy states cancel the timer.
-    if (connState === 'failed') startDisconnectGrace(5000);
-    else if (connState === 'disconnected') startDisconnectGrace(15000);
-    else if (connState === 'connected' || connState === 'completed') clearDisconnectGrace();
+    handleCallConnectionState(connState);
   };
 
   state.peerConnection.onconnectionstatechange = () => {
     const connState = state.peerConnection.connectionState;
     console.log('connectionState:', connState);
-    if (connState === 'failed') startDisconnectGrace(5000);
-    else if (connState === 'disconnected') startDisconnectGrace(15000);
-    else if (connState === 'connected' || connState === 'completed') clearDisconnectGrace();
+    handleCallConnectionState(connState);
   };
+}
+
+// Centralises ICE/connection-state handling shared by both oniceconnectionstatechange
+// and onconnectionstatechange.
+function handleCallConnectionState(connState) {
+  // Healthy — cancel any pending teardown and mark the call as connected.
+  if (connState === 'connected' || connState === 'completed') {
+    state.callConnected = true;
+    clearDisconnectGrace();
+    // Belt-and-suspenders: ontrack already hides the fallback, but if a track
+    // arrived before ICE reported 'connected' this keeps "Waiting for partner's
+    // video…" from lingering on a live connection.
+    if (state.isVideoCall && state.remoteStream && state.remoteStream.getTracks().length > 0) {
+      DOM.remoteVideoFallback.classList.add('hidden');
+    }
+    return;
+  }
+  // 'disconnected' is transient and self-heals (NAT mapping refresh, ICE
+  // restart, brief blips) — give it a generous window. 'failed' is terminal but
+  // only tear down if it stays failed (never auto-kill a call that already
+  // connected and is just flickering).
+  if (connState === 'disconnected') startDisconnectGrace(20000);
+  else if (connState === 'failed') startDisconnectGrace(10000);
+}
+
+// Explicitly request playback after wiring up a media stream. The <audio>/<video>
+// elements have `autoplay`, which most browsers honor after the user's click,
+// but some mobile browsers (notably iOS Safari) only start playback when play()
+// is called directly — without this, calls can connect with no audio.
+function tryPlay(el) {
+  if (!el || typeof el.play !== 'function') return;
+  try {
+    const p = el.play();
+    if (p && typeof p.catch === 'function') p.catch(() => {});
+  } catch (err) {
+    // Autoplay may still be blocked — the user just interacted, so it shouldn't be.
+    console.warn('⚠️  Unable to start media playback:', err);
+  }
 }
 
 // ─── Mute / Camera Toggle ────────────────────────────────────────────────
@@ -1453,6 +1527,7 @@ function cleanupCall() {
   state.isCallActive = false;
   state.isVideoCall = false;
   state.isCaller = false;
+  state.callConnected = false;
   state.isMuted = false;
   state.isCameraOff = false;
 
@@ -1556,7 +1631,7 @@ async function acceptIncomingCall() {
     if (!state.localStream) {
       state.localStream = await navigator.mediaDevices.getUserMedia({
         video: state.incomingCall.type === 'video',
-        audio: true,
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
 
       if (state.incomingCall.type === 'video') {
@@ -1573,6 +1648,7 @@ async function acceptIncomingCall() {
     state.isVideoCall = state.incomingCall.type === 'video';
     state.isCaller = false;
     state.isCallActive = true;
+    state.callConnected = false;
 
     await createPeerConnection();
 

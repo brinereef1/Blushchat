@@ -62,11 +62,11 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Content-Security-Policy', [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://*.googlesyndication.com https://*.doubleclick.net https://www.googletagmanager.com",
+    "script-src 'self' 'unsafe-inline' https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://*.googlesyndication.com https://*.doubleclick.net https://www.googletagmanager.com https://www.google-analytics.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: https:",
-    "connect-src 'self' ws: wss: https://*.googlesyndication.com https://*.doubleclick.net",
+    "connect-src 'self' ws: wss: https://*.googlesyndication.com https://*.doubleclick.net https://www.google-analytics.com https://analytics.google.com https://region1.google-analytics.com",
     "frame-src https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://*.googlesyndication.com https://*.doubleclick.net"
   ].join('; '));
   next();
@@ -527,7 +527,7 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`
   ╔═══════════════════════════════════════╗
-  ║   ✨ BlushChat ✨                     ║
+  ║   ✨ BlushedChat ✨                    ║
   ║   Running on http://localhost:${String(PORT).padEnd(5)} ║
   ╚═══════════════════════════════════════╝
   `);

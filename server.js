@@ -51,15 +51,48 @@ const io = new Server(server, {
   maxHttpBufferSize: 30 * 1024 * 1024
 });
 
-// Basic hardening: hide the Express banner, force browsers to sniff no types.
+// Basic hardening: hide the Express banner, force browsers to sniff no types,
+// and send a Content-Security-Policy as defense-in-depth against XSS. The
+// policy is permissive enough for the app to work: Google Fonts, the inline
+// theme-bootstrap script, socket.io's WebSocket transport (ws:/wss:), and
+// data: URIs for file messages. The Google Ads domains are pre-allowed so ads
+// work once AdSense code is added.
 app.disable('x-powered-by');
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://*.googlesyndication.com https://*.doubleclick.net https://www.googletagmanager.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: https:",
+    "connect-src 'self' ws: wss: https://*.googlesyndication.com https://*.doubleclick.net",
+    "frame-src https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://*.googlesyndication.com https://*.doubleclick.net"
+  ].join('; '));
   next();
+});
+
+// Health check for the hosting platform and uptime monitors. Returns JSON so
+// a load balancer / Fly.io can confirm the process is alive.
+app.get('/healthz', (req, res) => {
+  res.json({ status: 'ok', uptime: process.uptime() });
 });
 
 // Static frontend with modest caching (1h) to reduce repeat downloads.
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));
+
+// Clean, extension-free URLs for the static MPA pages (better for SEO/sharing).
+const STATIC_PAGES = {
+  about: 'about.html',
+  privacy: 'privacy.html',
+  terms: 'terms.html',
+  contact: 'contact.html',
+};
+Object.entries(STATIC_PAGES).forEach(([name, file]) => {
+  app.get(`/${name}`, (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', file));
+  });
+});
 
 // ─── In-Memory Store ───────────────────────────────────────────────────────────
 const users = new Map();      // socketId -> user profile
@@ -424,15 +457,32 @@ io.on('connection', (socket) => {
     // Coerce to string first — a non-string `fileType` would throw on
     // .startsWith() and crash the whole server.
     const fileTypeStr = typeof fileType === 'string' ? fileType : '';
+    // Only accept a strict allow-list of MIME types. This mirrors the client's
+    // ALLOWED_TYPES so every type the UI lets a user pick is relayed, while
+    // blocking image/svg+xml (SVGs can embed scripts and would be an XSS
+    // vector when rendered as a data URI) and any exotic subtype.
+    const SAFE_MIME_TYPES = new Set([
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+      'video/mp4', 'video/webm', 'video/quicktime',
+      'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4', 'audio/webm'
+    ]);
+    if (!SAFE_MIME_TYPES.has(fileTypeStr)) return;
     const category = fileTypeStr.startsWith('image/') ? 'image'
                    : fileTypeStr.startsWith('video/') ? 'video'
-                   : fileTypeStr.startsWith('audio/') ? 'audio'
-                   : null;
+                   : 'audio';
     const maxBytes = sizeLimits[category] || 5 * 1024 * 1024;
     if (fileSize > maxBytes) return;
     // Defense-in-depth: a client can lie about `fileSize`, so also check the
-    // actual wire payload (base64 data URI ≈ 1.4× raw size + ~100 B prefix).
-    if (typeof fileData === 'string' && fileData.length > maxBytes * 1.4 + 100) return;
+    // actual decoded byte length. The payload is a base64 data URI
+    // ("data:<mime>;base64,<b64>"), so strip the prefix and compute the exact
+    // byte count from the base64 length.
+    if (typeof fileData === 'string') {
+      const commaIdx = fileData.indexOf(',');
+      const b64 = commaIdx !== -1 ? fileData.slice(commaIdx + 1) : '';
+      // base64: 4 chars → 3 bytes, accounting for padding.
+      const decodedBytes = Math.floor(b64.length * 3 / 4);
+      if (decodedBytes > maxBytes) return;
+    }
 
     socket.to(user.room).emit('file-message', {
       sender: user.username,

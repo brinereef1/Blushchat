@@ -11,6 +11,7 @@
 
 :root {
   /* Color palette — soft romance */
+  color-scheme: light; /* browser renders native controls (selects, scrollbars) light */
   --rose-50: #fff5f7;
   --rose-100: #ffe0e8;
   --rose-200: #ffc2d0;
@@ -68,6 +69,7 @@
 
 /* ─── Dark Theme ───────────────────────────────────────────────────────── */
 [data-theme="dark"] {
+  color-scheme: dark; /* browser renders native controls (selects, scrollbars) dark */
   --bg-gradient: linear-gradient(145deg, #1a0f24 0%, #2b1635 50%, #331a2e 100%);
   --card-bg: rgba(36, 22, 46, 0.82);
   --card-border: rgba(255, 107, 138, 0.18);
@@ -245,12 +247,24 @@ body::before {
    LANDING SCREEN
    ═══════════════════════════════════════════════════════════════════════════ */
 #landing-screen {
-  align-items: center;
-  justify-content: center;
+  overflow-y: auto; /* allow scrolling to the SEO/FAQ content below the hero */
+}
+
+/* Full-viewport hero so the registration card stays centered on load; the
+   SEO + FAQ content scrolls into view below it. */
+.landing-hero {
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  display: flex;
   padding: 20px;
 }
 
+/* margin:auto gives true center-on-both-axes centering and — unlike
+   align-items:center — keeps a card taller than the viewport reachable by
+   scrolling on short screens instead of clipping its top. */
 .landing-card {
+  margin: auto;
   background: var(--card-bg);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
@@ -262,6 +276,159 @@ body::before {
   max-width: 420px;
   text-align: center;
   animation: cardAppear 0.7s var(--bounce);
+}
+
+/* ─── SEO / About Content (landing page, below the registration card) ─── */
+.seo-content {
+  width: 100%;
+  max-width: 660px;
+  margin: 40px auto 12px;
+  padding: 32px 30px;
+  background: var(--card-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--card-shadow);
+  text-align: left;
+  color: var(--gray-600);
+  font-size: 0.95rem;
+  line-height: 1.75;
+}
+
+.seo-content h2 {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  line-height: 1.35;
+  color: var(--gray-800);
+  margin-bottom: 14px;
+}
+
+.seo-content h3 {
+  font-family: var(--font-display);
+  font-size: 1.02rem;
+  color: var(--rose-500);
+  margin: 22px 0 8px;
+}
+
+.seo-content p {
+  margin-bottom: 14px;
+}
+
+.seo-content ul {
+  margin: 0 0 14px;
+  padding-left: 20px;
+}
+
+.seo-content li {
+  margin-bottom: 6px;
+}
+
+.seo-content strong {
+  color: var(--gray-700);
+}
+
+/* ─── FAQ Section (accordion, landing page below the SEO content) ─────── */
+/* The section is a plain, centered column; every question is its own
+   glass card so the list reads as distinct boxes instead of one slab. */
+.faq-section {
+  width: 100%;
+  max-width: 660px;
+  margin: 12px auto 56px;
+  padding: 0;
+  text-align: left;
+  color: var(--gray-600);
+  font-size: 0.95rem;
+  line-height: 1.75;
+}
+
+.faq-section h2 {
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  color: var(--gray-800);
+  text-align: center;
+  margin: 0 0 8px;
+}
+
+.faq-intro {
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--gray-500);
+  margin-bottom: 26px;
+}
+
+.faq-section details {
+  background: var(--card-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--card-shadow);
+  margin-bottom: 14px;
+  overflow: hidden;
+  transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
+}
+
+.faq-section details:hover {
+  box-shadow: var(--card-shadow-hover);
+}
+
+.faq-section details[open] {
+  border-color: var(--rose-300);
+  box-shadow: var(--card-shadow-hover);
+  transform: translateY(-1px);
+}
+
+.faq-section summary {
+  position: relative;
+  cursor: pointer;
+  list-style: none;
+  padding: 18px 46px 18px 20px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--gray-800);
+}
+
+.faq-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq-section summary::after {
+  content: '+';
+  position: absolute;
+  right: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--rose-50);
+  color: var(--rose-500);
+  font-weight: 600;
+  font-size: 1.05rem;
+  line-height: 1;
+  transition: background var(--transition), color var(--transition);
+}
+
+.faq-section details[open] summary::after {
+  content: '−';
+  background: var(--rose-500);
+  color: #fff;
+}
+
+.faq-section details[open] summary {
+  border-bottom: 1px solid var(--card-border);
+  padding-bottom: 14px;
+}
+
+.faq-section details p {
+  margin: 0;
+  padding: 14px 20px 18px;
+  color: var(--gray-600);
 }
 
 @keyframes cardAppear {
@@ -370,6 +537,35 @@ body::before {
   background-repeat: no-repeat;
   background-position: right 12px center;
   padding-right: 36px;
+}
+
+/* The option popup is native UI — style it to match the theme. color-scheme
+   (set on :root / [data-theme="dark"]) drives most browsers; these rules are
+   a fallback for engines that render the list from CSS. */
+.select-wrapper select option {
+  background-color: var(--surface-solid);
+  color: var(--gray-700);
+}
+
+/* Dark theme: the native popup can't be darkened reliably (Chromium/Windows),
+   and the popup inherits the <select>'s color — so a white closed box can't
+   have black popup text. Render the whole control light with black text (closed
+   box + option list alike) for a readable, consistent dropdown. */
+[data-theme="dark"] .select-wrapper select {
+  color-scheme: light; /* keeps the native popup light */
+  color: #000;
+  background-color: #fff;
+}
+
+[data-theme="dark"] .select-wrapper select option {
+  background-color: #fff;
+  color: #000;
+}
+
+[data-theme="dark"] .select-wrapper select option:disabled,
+[data-theme="dark"] .select-wrapper select option:checked {
+  background-color: #fff;
+  color: #000;
 }
 
 .input-wrapper input::placeholder {
@@ -1324,6 +1520,33 @@ body::before {
   opacity: 1;
 }
 
+/* ─── Google AdSense containers ───────────────────────────────────────────────
+   Ads are injected by script.js initAds() only when ADSENSE_CLIENT is set.
+   Containers are hidden until then so no empty space is shown. */
+.ad-container {
+  width: 100%;
+  min-height: 0;
+  margin-top: 16px;
+  display: none;
+  overflow: hidden;
+  text-align: center;
+}
+
+.ad-container.ad-loaded {
+  display: block;
+}
+
+.ad-container .adsbygoogle {
+  display: inline-block;
+  width: 100%;
+}
+
+/* ─── In-chat ad (compact, doesn't push the input bar around) ─────────────── */
+#chat-screen .ad-container {
+  margin: 8px 12px 0;
+  width: calc(100% - 24px);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    UTILITY
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -1385,5 +1608,369 @@ body::before {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SITE HEADER + NAVIGATION (shared across all pages)
+   ═══════════════════════════════════════════════════════════════════════════ */
+.site-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 56px;
+  padding: 0 16px;
+  background: var(--surface-glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--card-border);
+}
+
+/* Hide desktop navigation links, rely on mobile sidebar */
+.header-left .nav-links {
+  display: none !important;
+}
+
+/* Keep hamburger button visible on desktop */
+.nav-hamburger {
+  display: inline-flex !important;
+}
+
+/* FAQ improvements */
+.faq-section details {
+  margin-bottom: 20px; /* increased spacing */
+  border-radius: var(--radius-md);
+}
+
+.faq-section summary {
+  padding: 20px 24px 20px 20px; /* increased top/bottom padding */
+  font-size: 1rem; /* slightly larger */
+  font-weight: 600;
+}
+
+.faq-section details[open] summary {
+  border-bottom: 1px solid var(--card-border);
+  padding-bottom: 18px;
+}
+
+.faq-section details p {
+  padding: 18px 20px 20px;
+  line-height: 1.6;
+}
+
+/* On the landing screen the header sits inside the (scrollable) screen and
+   overlays the hero instead of pinning to the viewport. */
+.landing-header {
+  position: absolute;
+}
+
+.header-left,
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.nav-link {
+  padding: 8px 12px;
+  border-radius: var(--radius-full);
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--gray-600);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color var(--transition), background var(--transition);
+}
+
+.nav-link:hover,
+.nav-link[aria-current="page"] {
+  color: var(--rose-500);
+  background: var(--surface-glass-faint);
+}
+
+/* Hamburger — hidden on desktop, shown on mobile. A rounded-square "3-line
+   box" that slides the site links out of a left sidebar when tapped. */
+.nav-hamburger {
+  display: none;
+  width: 42px;
+  height: 42px;
+  border: 1.5px solid var(--gray-200);
+  border-radius: 12px;
+  background: var(--surface-glass-faint);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 5px;
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.nav-hamburger:hover {
+  border-color: var(--rose-300);
+}
+
+.nav-hamburger span {
+  width: 18px;
+  height: 2px;
+  background: var(--gray-700);
+  border-radius: 2px;
+  transition: background var(--transition);
+}
+
+/* Mobile sidebar (opens from the left) */
+.mobile-nav {
+  position: fixed;
+  top: 0;
+  left: -280px;
+  width: 280px;
+  height: 100vh;
+  height: 100dvh;
+  background: var(--card-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-right: 1px solid var(--card-border);
+  box-shadow: 6px 0 24px rgba(0, 0, 0, 0.15);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: left 0.3s ease;
+  z-index: 1001;
+}
+
+.mobile-nav.open {
+  left: 0;
+}
+
+.mobile-nav-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.mobile-nav-brand {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--gray-800);
+}
+
+.mobile-nav a {
+  display: block;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--gray-700);
+  text-decoration: none;
+  transition: color var(--transition), background var(--transition);
+}
+
+.mobile-nav a:hover,
+.mobile-nav a[aria-current="page"] {
+  color: var(--rose-500);
+  background: var(--surface-glass-faint);
+}
+
+.nav-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 5, 14, 0.45);
+  z-index: 1000;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   STATIC PAGES (about / privacy / terms / contact)
+   ═══════════════════════════════════════════════════════════════════════════ */
+body.static-page {
+  overflow: auto;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.page-wrap {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 88px 20px 40px; /* clears the fixed header */
+}
+
+.page-card {
+  background: var(--card-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--card-shadow);
+  padding: 40px 40px;
+  text-align: left;
+  color: var(--gray-600);
+  font-size: 0.95rem;
+  line-height: 1.75;
+}
+
+.page-card h1 {
+  font-family: var(--font-display);
+  font-size: 1.7rem;
+  color: var(--gray-800);
+  margin-bottom: 8px;
+}
+
+.page-card .page-updated {
+  font-size: 0.78rem;
+  color: var(--gray-400);
+  margin-bottom: 18px;
+}
+
+.page-card h2 {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  color: var(--rose-500);
+  margin: 26px 0 8px;
+}
+
+.page-card p {
+  margin-bottom: 14px;
+}
+
+.page-card ul {
+  margin: 0 0 14px;
+  padding-left: 22px;
+}
+
+.page-card li {
+  margin-bottom: 6px;
+}
+
+.page-card a {
+  color: var(--rose-500);
+  text-decoration: none;
+}
+
+.page-card a:hover {
+  text-decoration: underline;
+}
+
+.contact-email {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 18px;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, var(--rose-400), var(--rose-600));
+  color: #fff !important;
+  border-radius: var(--radius-full);
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 0.95rem;
+  text-decoration: none !important;
+  box-shadow: 0 4px 16px rgba(229, 76, 108, 0.3);
+}
+
+.contact-email:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(229, 76, 108, 0.35);
+}
+
+.contact-form .form-group {
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.contact-form label {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--gray-600);
+  margin-bottom: 6px;
+}
+
+.contact-form input,
+.contact-form textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1.5px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  background: var(--surface-solid);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: var(--gray-700);
+  outline: none;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.contact-form input:focus,
+.contact-form textarea:focus {
+  border-color: var(--rose-300);
+  box-shadow: 0 0 0 3px rgba(255, 107, 138, 0.1);
+}
+
+.contact-form textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+.page-footer {
+  text-align: center;
+  padding: 24px 16px 32px;
+  color: var(--gray-400);
+  font-size: 0.8rem;
+}
+
+.page-footer a {
+  color: var(--gray-500);
+  text-decoration: none;
+}
+
+.page-footer a:hover {
+  color: var(--rose-500);
+}
+
+/* ─── Responsive: collapse the nav into the hamburger on mobile ───────── */
+@media (max-width: 768px) {
+  .nav-links {
+    display: none;
+  }
+
+  .nav-hamburger {
+    display: inline-flex;
+  }
+
+  .page-card {
+    padding: 28px 20px;
+  }
+
+  .seo-content {
+    padding: 26px 20px;
+  }
+
+  .faq-section h2 {
+    font-size: 1.25rem;
+  }
+
+  .faq-section summary {
+    padding: 16px 40px 16px 16px;
+    font-size: 0.92rem;
+  }
+
+  .faq-section details p {
+    padding: 12px 16px 16px;
   }
 }

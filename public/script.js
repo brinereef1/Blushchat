@@ -36,6 +36,19 @@ const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp',
                        'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4',
                        'audio/webm'];
 
+// ─── Google AdSense ─────────────────────────────────────────────────────
+// Set ADSENSE_CLIENT to your publisher ID (e.g. 'ca-pub-1234567890123456')
+// to enable ads. Leave empty to keep the app ad-free — the containers in
+// index.html stay hidden and no AdSense script is loaded.
+const ADSENSE_CLIENT = '';
+// Maps the data-ad-slot attribute on each container to your AdSense ad-slot
+// numbers (one responsive unit per screen). Create these in AdSense first.
+const ADSENSE_SLOTS = {
+  landing: '',
+  connecting: '',
+  chat: '',
+};
+
 // ─── Emoji icons per category ───────────────────────────────────────────
 const FILE_ICONS = {
   image: '📷',
@@ -246,6 +259,7 @@ function init() {
   createFloatingHearts();
   setupRangeSliders();
   setupThemeToggle();
+  initAds();
 }
 
 function populateAgeOptions() {
@@ -1131,6 +1145,53 @@ window.addEventListener('beforeunload', () => {
     state.socket.disconnect();
   }
 });
+
+// ─── Google AdSense loader ────────────────────────────────────────────────
+// Injects the AdSense <ins> units into each .ad-container and pushes them to
+// the adsbygoogle queue. No-ops (and hides containers) unless ADSENSE_CLIENT
+// is set, so the app is fully functional before an account is approved.
+function initAds() {
+  const containers = document.querySelectorAll('.ad-container');
+
+  const slotsConfigured = Object.values(ADSENSE_SLOTS).some((slot) => slot);
+  if (!ADSENSE_CLIENT || !slotsConfigured) {
+    // No ads configured — keep containers hidden, load nothing.
+    return;
+  }
+
+  // Load the AdSense library once, asynchronously.
+  const existing = document.querySelector('script[src*="pagead2.googlesyndication.com"]');
+  if (!existing) {
+    const s = document.createElement('script');
+    s.async = true;
+    s.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}`;
+    s.crossOrigin = 'anonymous';
+    document.head.appendChild(s);
+  }
+
+  containers.forEach((container) => {
+    const slot = ADSENSE_SLOTS[container.dataset.adSlot];
+    if (!slot) return; // No slot mapped for this screen — leave hidden.
+
+    const ins = document.createElement('ins');
+    ins.className = 'adsbygoogle';
+    ins.setAttribute('data-ad-client', ADSENSE_CLIENT);
+    ins.setAttribute('data-ad-slot', slot);
+    ins.setAttribute('data-ad-format', 'auto');
+    ins.setAttribute('data-full-width-responsive', 'true');
+
+    container.appendChild(ins);
+    container.classList.add('ad-loaded');
+
+    // AdSense requires a push per ad unit. If the library hasn't finished
+    // loading yet, the push is queued and processed when it arrives.
+    try {
+      (window.adsbygoogle = window.adsbygoogle || []).push({});
+    } catch (e) {
+      console.warn('AdSense push failed:', e);
+    }
+  });
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // BOOT

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Server Error - BlushChat</title>
+  <meta name="description" content="Something went wrong on our end. Please try again later.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💕</text></svg>">
+  <meta name="theme-color" content="#ff6b8a">
+</head>
+<body>
+  <div id="hearts-bg" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <div class="header-left">
+      <button type="button" class="nav-hamburger" id="nav-hamburger" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-nav">
+        <span></span><span></span><span></span>
+      </button>
+      <a href="index.html" class="logo">BlushChat</a>
+    </div>
+    <div class="header-right">
+      <button type="button" class="icon-btn theme-toggle" title="Toggle dark/light theme" aria-label="Toggle dark/light theme">
+        <span class="theme-toggle-icon">🌙</span>
+      </button>
+    </div>
+  </header>
+
+  <div id="mobile-nav" class="mobile-nav" aria-hidden="true">
+    <div class="mobile-nav-head">
+      <span class="mobile-nav-brand">💕 BlushChat</span>
+      <button type="button" id="mobile-nav-close" class="icon-btn" aria-label="Close menu">✕</button>
+    </div>
+    <nav aria-label="Mobile navigation">
+      <a href="index.html">Home</a>
+      <a href="about.html">About Us</a>
+      <a href="privacy.html">Privacy Policy</a>
+      <a href="terms.html">Terms & Conditions</a>
+      <a href="contact.html">Contact Us</a>
+    </nav>
+  </div>
+  <div id="nav-overlay" class="nav-overlay hidden" aria-hidden="true"></div>
+
+  <main class="page-wrap">
+    <article class="page-card error-page">
+      <div class="error-icon">500</div>
+      <h1>Something Went Wrong</h1>
+      <p class="page-updated">We're experiencing technical difficulties</p>
+      <p>Our servers encountered an unexpected condition that prevented them from fulfilling your request. Please try again in a few minutes.</p>
+      <div class="error-actions">
+        <a href="index.html" class="btn-primary">Go to Home</a>
+        <a href="contact.html" class="btn-secondary">Contact Support</a>
+      </div>
+    </article>
+  </main>
+
+  <footer class="page-footer">
+    <a href="index.html">💕 BlushChat</a> &nbsp;·&nbsp;
+    <a href="about.html">About</a> &nbsp;·&nbsp;
+    <a href="privacy.html">Privacy</a> &nbsp;·&nbsp;
+    <a href="terms.html">Terms</a> &nbsp;·&nbsp;
+    <a href="contact.html">Contact</a>
+  </footer>
+
+  <script src="common.js"></script>
+</body>
+</html>

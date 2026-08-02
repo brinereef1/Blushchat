@@ -1865,12 +1865,15 @@ body.static-page {
 
 .page-card .btn-primary,
 .page-card .btn-secondary {
-  color: white !important;
+  color: #000000 !important;
+  font-weight: 500 !important;
+  font-size: 1rem !important;
 }
 
 .page-card .btn-primary:hover,
 .page-card .btn-secondary:hover {
-  color: white !important;
+  color: #000000 !important;
+  opacity: 0.9;
 }
 
 .btn-text {

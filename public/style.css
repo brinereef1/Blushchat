@@ -1876,6 +1876,18 @@ body.static-page {
   opacity: 0.9;
 }
 
+/* Dark mode: button text should be white */
+[data-theme="dark"] .page-card .btn-primary,
+[data-theme="dark"] .page-card .btn-secondary {
+  color: #ffffff !important;
+}
+
+[data-theme="dark"] .page-card .btn-primary:hover,
+[data-theme="dark"] .page-card .btn-secondary:hover {
+  color: #ffffff !important;
+  opacity: 0.9;
+}
+
 .btn-text {
   color: inherit;
 }

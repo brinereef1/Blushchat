@@ -511,6 +511,17 @@ io.on('connection', (socket) => {
   });
 });
 
+// 404 Handler - serves your custom 404 page for any unknown routes
+app.use((req, res) => {
+  res.status(404).sendFile(path.join(__dirname, 'public', '404.html'));
+});
+
+// 500 Error Handler
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).sendFile(path.join(__dirname, 'public', '500.html'));
+});
+
 // ─── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {

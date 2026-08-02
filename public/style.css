@@ -1863,6 +1863,20 @@ body.static-page {
   text-decoration: none;
 }
 
+.page-card .btn-primary,
+.page-card .btn-secondary {
+  color: white !important;
+}
+
+.page-card .btn-primary:hover,
+.page-card .btn-secondary:hover {
+  color: white !important;
+}
+
+.btn-text {
+  color: inherit;
+}
+
 .page-card a:hover {
   text-decoration: underline;
 }

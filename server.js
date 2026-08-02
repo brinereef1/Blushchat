@@ -73,7 +73,7 @@ app.use((req, res, next) => {
 });
 
 // Health check for the hosting platform and uptime monitors. Returns JSON so
-// a load balancer / Fly.io can confirm the process is alive.
+// a load balancer / Render can confirm the process is alive.
 app.get('/healthz', (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime() });
 });

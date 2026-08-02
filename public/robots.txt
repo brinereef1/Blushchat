@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://blushchat.fly.dev/sitemap.xml
+Sitemap: https://blushedchat.onrender.com/sitemap.xml

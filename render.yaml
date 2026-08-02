@@ -1,0 +1,19 @@
+# render.yaml — Render.com blueprint for BlushedChat
+# Deploys the app from this GitHub repo via Render's Blueprints.
+# The free plan sleeps when idle and wakes on the next inbound visit,
+# which is fine for a Socket.IO chat app (connections themselves keep it awake).
+services:
+  - type: web
+    name: blushedchat
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: ALLOWED_ORIGINS
+        # Comma-separated Socket.IO origin allow-list. Browser Origin must match
+        # for chat to connect. Update to your production URL if you change the
+        # service name or add a custom domain.
+        value: https://blushedchat.onrender.com,http://localhost:3000,http://127.0.0.1:3000
